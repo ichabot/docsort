@@ -32,14 +32,14 @@ def _get_converter(config: Config) -> Any:
     if cache_key in _converter_cache:
         return _converter_cache[cache_key]
 
+    from docling.datamodel.base_models import InputFormat
     from docling.datamodel.pipeline_options import PdfPipelineOptions
-    from docling.document_converter import DocumentConverter
+    from docling.document_converter import DocumentConverter, PdfFormatOption
 
     pipeline_options = PdfPipelineOptions()
-    pipeline_options.ocr_options.force_full_page_ocr = False
+    pipeline_options.do_ocr = True
 
-    kwargs: dict[str, Any] = {"pipeline_options": pipeline_options}
-
+    # GPU-Beschleunigung
     if config.gpu:
         try:
             from docling.datamodel.accelerator_options import (
@@ -47,11 +47,10 @@ def _get_converter(config: Config) -> Any:
                 AcceleratorOptions,
             )
 
-            accel = AcceleratorOptions(
+            pipeline_options.accelerator_options = AcceleratorOptions(
                 device=AcceleratorDevice.CUDA,
                 num_threads=4,
             )
-            kwargs["accelerator_options"] = accel
             logger.info("GPU-Beschleunigung (CUDA) aktiviert.")
         except Exception:
             logger.warning("CUDA nicht verfügbar — Fallback auf CPU.")
@@ -65,7 +64,11 @@ def _get_converter(config: Config) -> Any:
     except ImportError:
         logger.debug("docling-ocr-onnxtr nicht installiert — Standard-OCR wird genutzt.")
 
-    converter = DocumentConverter(**kwargs)
+    converter = DocumentConverter(
+        format_options={
+            InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options),
+        }
+    )
     _converter_cache[cache_key] = converter
     return converter
 
