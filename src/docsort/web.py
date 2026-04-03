@@ -277,12 +277,7 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
     # ==========================================================
     # LAYOUT
     # ==========================================================
-    custom_css = """
-    .compact-upload { max-height: 80px !important; min-height: 60px !important; }
-    .compact-upload .file-preview { display: none !important; }
-    """
-
-    with gr.Blocks(title="DocSort", theme=gr.themes.Soft(), css=custom_css) as app:
+    with gr.Blocks(title="DocSort") as app:
         # States
         cached_state = gr.State(value=[])
         file_map_state = gr.State(value={})
@@ -317,7 +312,6 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
                             col_count=(8, "fixed"),
                             interactive=False,
                             label="Ergebnis — Zeile anklicken für Details",
-                            height=400,
                         )
                         with gr.Accordion("📋 Log", open=False):
                             log_output = gr.Textbox(lines=8, interactive=False, show_label=False)

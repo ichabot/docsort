@@ -155,7 +155,8 @@ def web(port: int, share: bool, config_path: Path | None) -> None:
     from docsort.web import create_ui
 
     app = create_ui(config=config)
-    app.launch(server_port=port, share=share)
+    import gradio as gr
+    app.launch(server_port=port, share=share, theme=gr.themes.Soft())
 
 
 @main.command()
