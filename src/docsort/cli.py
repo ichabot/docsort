@@ -30,9 +30,16 @@ def _setup_logging(verbose: bool = False, log_file: str = "") -> None:
 
 
 @click.group()
-@click.version_option(package_name="docsort")
+@click.version_option(
+    package_name="docsort",
+    message="%(prog)s v%(version)s — KI-gestützt (Vibe Coding), MIT-Lizenz, keine Gewährleistung.",
+)
 def main() -> None:
-    """DocSort — Automatische Dokumenten-Sortierung per OCR und LLM."""
+    """DocSort — Automatische Dokumenten-Sortierung per OCR und LLM.
+
+    ⚠️  Dieses Tool wurde mit KI-Unterstützung entwickelt und nutzt ungeprüfte
+    Drittanbieter-Bibliotheken. Erstelle Backups und prüfe Ergebnisse.
+    """
 
 
 @main.command()

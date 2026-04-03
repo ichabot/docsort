@@ -491,11 +491,50 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
                         save_status = gr.Textbox(label="Status", interactive=False)
 
             # ======== Tab 3: System-Prompt ========
-            with gr.Tab("📝 System-Prompt"):
+            with gr.Tab("📝 Prompt"):
                 gr.Markdown("### System-Prompt anpassen\n`{doc_types}` = Platzhalter für Dokumenttypen.")
                 system_prompt_input = gr.Textbox(
                     label="System-Prompt", value=config.system_prompt, lines=25,
                 )
+
+            # ======== Tab 4: Info ========
+            with gr.Tab("ℹ️ Info"):
+                from docsort import __version__
+                gr.Markdown(f"""### 📄 DocSort v{__version__}
+
+Automatische Klassifizierung und Sortierung eingescannter Dokumente per OCR und LLM.
+
+---
+
+### ⚠️ Hinweis
+
+Dieses Projekt wurde mit KI-Unterstützung entwickelt („Vibe Coding") und nutzt
+Open-Source-Bibliotheken von Drittanbietern, die **nicht unabhängig geprüft** wurden.
+Die Software wird „wie besehen" unter der MIT-Lizenz bereitgestellt, ohne jegliche Gewährleistung.
+
+- **Erstelle Backups** deiner Dokumente bevor du DocSort nutzt
+- Der **Copy-Modus** (Standard) lässt Originale unangetastet
+- Mit **Dry-Run** kannst du Änderungen vorab prüfen
+- OCR und LLM können Fehler machen — **prüfe Ergebnisse** bei wichtigen Dokumenten
+- Externe Abhängigkeiten (Docling, Gradio, OpenAI SDK etc.) liegen außerhalb unserer Kontrolle
+- Dieses Tool ist ein **Hobby-Projekt**, kein zertifiziertes Dokumentenmanagementsystem
+
+> Erst mit Kopien testen, Ergebnisse prüfen, Backups behalten.
+
+---
+
+### 📖 Dokumentation
+
+- [README (English)](https://github.com/ichabot/docsort/blob/main/README.md)
+- [README (Deutsch)](https://github.com/ichabot/docsort/blob/main/README_DE.md)
+- [GitHub Repository](https://github.com/ichabot/docsort)
+
+---
+
+### 📝 Lizenz
+
+MIT License — [Details](https://github.com/ichabot/docsort/blob/main/LICENSE)
+""")
 
         # ==========================================================
         # Inputs
