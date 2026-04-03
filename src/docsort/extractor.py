@@ -38,6 +38,7 @@ def _get_converter(config: Config) -> Any:
 
     pipeline_options = PdfPipelineOptions()
     pipeline_options.do_ocr = True
+    pipeline_options.allow_external_plugins = True
 
     # GPU-Beschleunigung
     if config.gpu:
