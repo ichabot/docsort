@@ -32,6 +32,22 @@ DocSort reads scanned documents (PDF, DOCX, XLSX, images, etc.), extracts text v
 
 ---
 
+## ⚠️ Disclaimer
+
+This project was developed with AI assistance ("vibe coding") and uses third-party open-source dependencies that have **not been independently audited**. The software is provided "as is" under the MIT License, without warranty of any kind.
+
+**Please note:**
+- **Back up your documents** before using DocSort, especially in `--move` mode (which relocates originals)
+- The `--copy` mode (default) keeps your originals untouched — use this until you trust the results
+- The `--dry-run` flag lets you preview all changes before anything happens
+- OCR and LLM classification can produce errors — always verify results for important documents
+- External dependencies (Docling, Gradio, OpenAI SDK, etc.) are maintained by their respective projects — vulnerabilities in those packages are outside our control
+- This tool is a personal/hobby project, not a certified document management system
+
+> **Short version:** Test with copies first, check the results, keep backups. Don't blindly trust AI classification for legally or financially critical documents.
+
+---
+
 ## 📋 Requirements
 
 | Component | Version | Note |

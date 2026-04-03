@@ -31,6 +31,22 @@ DocSort liest eingescannte Dokumente (PDF, DOCX, XLSX, Bilder etc.) ein, extrahi
 
 ---
 
+## ⚠️ Hinweis / Haftungsausschluss
+
+Dieses Projekt wurde mit KI-Unterstützung entwickelt („Vibe Coding") und nutzt Open-Source-Bibliotheken von Drittanbietern, die **nicht unabhängig geprüft** wurden. Die Software wird „wie besehen" unter der MIT-Lizenz bereitgestellt, ohne jegliche Gewährleistung.
+
+**Bitte beachten:**
+- **Erstelle Backups deiner Dokumente** bevor du DocSort nutzt — besonders im `--move` Modus (verschiebt Originale)
+- Der `--copy` Modus (Standard) lässt deine Originale unangetastet — nutze ihn bis du den Ergebnissen vertraust
+- Mit `--dry-run` kannst du alle Änderungen vorab prüfen ohne dass etwas passiert
+- OCR und LLM-Klassifizierung können Fehler machen — prüfe Ergebnisse bei wichtigen Dokumenten immer nach
+- Externe Abhängigkeiten (Docling, Gradio, OpenAI SDK etc.) werden von ihren jeweiligen Projekten gepflegt — Sicherheitslücken in diesen Paketen liegen außerhalb unserer Kontrolle
+- Dieses Tool ist ein privates Hobby-Projekt, kein zertifiziertes Dokumentenmanagementsystem
+
+> **Kurzfassung:** Erst mit Kopien testen, Ergebnisse prüfen, Backups behalten. Verlass dich nicht blind auf KI-Klassifizierung bei rechtlich oder finanziell kritischen Dokumenten.
+
+---
+
 ## 📋 Voraussetzungen
 
 | Komponente | Version | Hinweis |
