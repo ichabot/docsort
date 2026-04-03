@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
+from typing import Any
 
 # Gradio Telemetrie deaktivieren
 os.environ["GRADIO_ANALYTICS_ENABLED"] = "false"
@@ -12,6 +13,7 @@ os.environ["GRADIO_ANALYTICS_ENABLED"] = "false"
 import gradio as gr
 
 from docsort.config import Config, load_config, save_config, BUILTIN_PROFILES, LLMProfile
+from docsort.classifier import Classification
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +84,6 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
             )
         elif profile_name in cfg.profiles:
             cfg.apply_profile(profile_name)
-            # Überschreibe mit custom-Feldern wenn ausgefüllt
             if custom_url:
                 cfg.llm_base_url = custom_url
             if custom_model:
@@ -117,10 +118,11 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
         doc_types_text: str,
         confidence_threshold: float,
         max_retries: int,
-    ) -> tuple[list[list[str]], str]:
-        """Dry-Run: Analysiert Dateien und zeigt Vorschau."""
+        cached_results: list[dict] | None,
+    ) -> tuple[list[list[str]], str, list[dict]]:
+        """Dry-Run: Analysiert Dateien, zeigt Vorschau, cached Ergebnisse."""
         if not files:
-            return [], "⚠️ Keine Dateien hochgeladen."
+            return [], "⚠️ Keine Dateien hochgeladen.", []
 
         from docsort.pipeline import process_file
 
@@ -132,6 +134,7 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
 
         rows: list[list[str]] = []
         log_lines: list[str] = []
+        cache: list[dict] = []
 
         for i, file_path_str in enumerate(files, 1):
             file_path = Path(file_path_str)
@@ -151,6 +154,14 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
                     conf_str,
                     target,
                 ])
+                # Ergebnis cachen
+                cache.append({
+                    "file_path": file_path_str,
+                    "doc_type": c.doc_type,
+                    "short_info": c.short_info,
+                    "doc_date": c.doc_date,
+                    "confidence": c.confidence,
+                })
                 status = "⚠️" if result.low_confidence else "✓"
                 log_lines.append(f"[{i}/{len(files)}] {status} {file_path.name} → {c.doc_type} ({c.confidence:.0%})")
             else:
@@ -165,7 +176,8 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
                 log_lines.append(f"[{i}/{len(files)}] ✗ {file_path.name}: {result.error}")
 
         log_text = "\n".join(log_lines)
-        return rows, log_text
+        log_text += f"\n\n💡 Tipp: Du kannst Typ, Kurzinfo und Datum in der Tabelle bearbeiten bevor du ausführst."
+        return rows, log_text, cache
 
     def execute(
         files: list[str] | None,
@@ -181,12 +193,12 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
         doc_types_text: str,
         confidence_threshold: float,
         max_retries: int,
+        cached_results: list[dict] | None,
+        edited_table: Any,
     ) -> str:
-        """Führt die tatsächliche Organisation durch."""
+        """Führt die Organisation durch — nutzt Cache wenn vorhanden."""
         if not files:
             return "⚠️ Keine Dateien hochgeladen."
-
-        from docsort.pipeline import process_file
 
         cfg = _build_config(
             output_dir, profile_name, custom_url, custom_model, custom_key,
@@ -196,23 +208,104 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
 
         log_lines: list[str] = []
 
-        for i, file_path_str in enumerate(files, 1):
-            file_path = Path(file_path_str)
-            result = process_file(file_path, cfg)
+        # Prüfe ob wir gecachte + ggf. editierte Ergebnisse nutzen können
+        use_cache = cached_results and len(cached_results) > 0
 
-            if result.success:
-                action = "verschoben" if mode.lower() == "move" else "kopiert"
-                conf_info = ""
-                if result.low_confidence:
-                    conf_info = f" ⚠️ Konfidenz: {result.classification.confidence:.0%}"
-                log_lines.append(f"[{i}/{len(files)}] ✓ {file_path.name} → {result.target} ({action}){conf_info}")
-            else:
-                log_lines.append(f"[{i}/{len(files)}] ✗ {file_path.name}: {result.error}")
+        # Editierte Tabelle auslesen (falls vorhanden)
+        edits: dict[str, dict] = {}
+        if edited_table is not None and use_cache:
+            try:
+                # edited_table kann ein DataFrame oder eine Liste von Listen sein
+                if hasattr(edited_table, "values"):
+                    table_rows = edited_table.values.tolist()
+                elif isinstance(edited_table, list):
+                    table_rows = edited_table
+                else:
+                    table_rows = []
 
-        ok = sum(1 for l in log_lines if "✓" in l)
-        fail = len(log_lines) - ok
+                for row in table_rows:
+                    if len(row) >= 4 and row[1] != "FEHLER":
+                        edits[row[0]] = {
+                            "doc_type": row[1],
+                            "short_info": row[2],
+                            "doc_date": row[3],
+                        }
+            except Exception as exc:
+                logger.warning("Konnte editierte Tabelle nicht lesen: %s", exc)
+
+        if use_cache:
+            log_lines.append("⚡ Nutze gecachte Analyse-Ergebnisse (kein erneutes OCR/LLM).\n")
+
+            from docsort.classifier import Classification, sanitize_short_info
+            from docsort.organizer import organize
+
+            for i, entry in enumerate(cached_results, 1):
+                file_path = Path(entry["file_path"])
+                filename = file_path.name
+
+                # Editierte Werte aus Tabelle übernehmen
+                if filename in edits:
+                    e = edits[filename]
+                    doc_type = e.get("doc_type", entry["doc_type"])
+                    short_info = sanitize_short_info(e.get("short_info", entry["short_info"]))
+                    doc_date = e.get("doc_date", entry["doc_date"])
+                    was_edited = (
+                        doc_type != entry["doc_type"]
+                        or short_info != sanitize_short_info(entry["short_info"])
+                        or doc_date != entry["doc_date"]
+                    )
+                else:
+                    doc_type = entry["doc_type"]
+                    short_info = entry["short_info"]
+                    doc_date = entry["doc_date"]
+                    was_edited = False
+
+                classification = Classification(
+                    doc_type=doc_type,
+                    short_info=short_info,
+                    doc_date=doc_date,
+                    confidence=entry["confidence"],
+                )
+
+                try:
+                    result = organize(file_path, classification, cfg)
+                    if result.success:
+                        action = "verschoben" if mode.lower() == "move" else "kopiert"
+                        edit_marker = " ✏️" if was_edited else ""
+                        log_lines.append(f"[{i}/{len(cached_results)}] ✓ {filename} → {result.target} ({action}){edit_marker}")
+                    else:
+                        log_lines.append(f"[{i}/{len(cached_results)}] ✗ {filename}: {result.error}")
+                except Exception as exc:
+                    log_lines.append(f"[{i}/{len(cached_results)}] ✗ {filename}: {exc}")
+
+            ok = sum(1 for l in log_lines if "✓" in l)
+            total = len(cached_results)
+            fail = total - ok
+        else:
+            # Kein Cache → volle Pipeline (Fallback)
+            log_lines.append("ℹ️ Keine Vorschau vorhanden — führe vollständige Analyse durch.\n")
+
+            from docsort.pipeline import process_file
+
+            for i, file_path_str in enumerate(files, 1):
+                file_path = Path(file_path_str)
+                result = process_file(file_path, cfg)
+
+                if result.success:
+                    action = "verschoben" if mode.lower() == "move" else "kopiert"
+                    conf_info = ""
+                    if result.low_confidence:
+                        conf_info = f" ⚠️ Konfidenz: {result.classification.confidence:.0%}"
+                    log_lines.append(f"[{i}/{len(files)}] ✓ {file_path.name} → {result.target} ({action}){conf_info}")
+                else:
+                    log_lines.append(f"[{i}/{len(files)}] ✗ {file_path.name}: {result.error}")
+
+            ok = sum(1 for l in log_lines if "✓" in l)
+            total = len(files)
+            fail = total - ok
+
         log_lines.append(f"\n{'='*50}")
-        log_lines.append(f"Fertig: {ok}/{len(files)} erfolgreich, {fail} Fehler.")
+        log_lines.append(f"Fertig: {ok}/{total} erfolgreich, {fail} Fehler.")
 
         return "\n".join(log_lines)
 
@@ -242,6 +335,9 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
     # === UI Layout ===
     with gr.Blocks(title="DocSort", theme=gr.themes.Soft()) as app:
         gr.Markdown("# 📄 DocSort\nAutomatische Dokumenten-Klassifizierung und -Sortierung")
+
+        # State für gecachte Analyse-Ergebnisse
+        cached_state = gr.State(value=[])
 
         with gr.Tabs():
             # === Tab 1: Verarbeitung ===
@@ -298,11 +394,17 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
                             analyze_btn = gr.Button("🔍 Analysieren (Vorschau)", variant="secondary", scale=1)
                             execute_btn = gr.Button("▶️ Ausführen", variant="primary", scale=1)
 
-                gr.Markdown("### 📊 Ergebnis")
+                gr.Markdown(
+                    "### 📊 Ergebnis\n"
+                    "Nach der Analyse kannst du **Typ**, **Kurzinfo** und **Datum** in der Tabelle direkt bearbeiten, "
+                    "bevor du auf Ausführen klickst."
+                )
                 result_table = gr.Dataframe(
                     headers=["Datei", "Typ", "Kurzinfo", "Datum", "Konfidenz", "Zielpfad"],
                     datatype=["str", "str", "str", "str", "str", "str"],
-                    label="Vorschau",
+                    col_count=(6, "fixed"),
+                    interactive=True,
+                    label="Vorschau (editierbar)",
                 )
                 log_output = gr.Textbox(label="Log", lines=10, interactive=False)
 
@@ -379,12 +481,12 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
 
         analyze_btn.click(
             fn=analyze,
-            inputs=common_inputs,
-            outputs=[result_table, log_output],
+            inputs=common_inputs + [cached_state],
+            outputs=[result_table, log_output, cached_state],
         )
         execute_btn.click(
             fn=execute,
-            inputs=common_inputs,
+            inputs=common_inputs + [cached_state, result_table],
             outputs=[log_output],
         )
 
