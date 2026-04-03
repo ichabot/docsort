@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Automatische Klassifizierung und Sortierung eingescannter Dokumente per OCR und lokalem LLM"
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.14"
 keywords = ["ocr", "document-sorting", "llm", "docling", "automation"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -21,20 +21,21 @@ classifiers = [
     "Topic :: Office/Business",
     "Topic :: Utilities",
 ]
+# Pinned dependencies — tested and working as of 2026-04-03
 dependencies = [
-    "docling>=2.0",
-    "openai>=1.0",
-    "gradio>=4.0",
-    "click>=8.0",
-    "pyyaml>=6.0",
+    "docling>=2.84,<3",
+    "openai>=2.30,<3",
+    "gradio>=6.11,<7",
+    "click>=8.3,<9",
+    "pyyaml>=6.0,<7",
 ]
 
 [project.optional-dependencies]
-gpu = ["torch>=2.0", "torchvision", "torchaudio"]
+gpu = ["torch>=2.11,<3", "torchvision>=0.26,<1", "torchaudio>=2.11,<3"]
 ocr-onnxtr = ["docling-ocr-onnxtr[gpu]"]
-anthropic = ["anthropic>=0.30"]
-all-llm = ["anthropic>=0.30"]
-dev = ["pytest>=7.0", "pytest-cov"]
+anthropic = ["anthropic>=0.30,<1"]
+all-llm = ["anthropic>=0.30,<1"]
+dev = ["pytest>=9.0,<10", "pytest-cov>=7.1,<8"]
 
 [project.scripts]
 docsort = "docsort.cli:main"
