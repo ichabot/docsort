@@ -176,26 +176,26 @@ Das Template bestimmt die Ordnerstruktur. Verfügbare Variablen:
 | `{doc_type}` | Dokumenttyp | `Rechnung` |
 | `{year}` | Jahr aus Dokumentdatum | `2026` |
 | `{month}` | Monat aus Dokumentdatum | `03` |
-| `{filename}` | Generierter Dateiname | `2026-03-15_Rechnung-Strom.pdf` |
+| `{filename}` | Generierter Dateiname | `2026-03-15_Strom.pdf` |
 
 Beispiele:
 
 ```yaml
 # Standard: Typ → Jahr (empfohlen)
 folder_template: "{doc_type}/{year}/{filename}"
-# → sorted/Rechnung/2026/2026-01-15_Rechnung-Strom.pdf
+# → sorted/Rechnung/2026/2026-01-15_Strom.pdf
 
 # Jahr zuerst
 folder_template: "{year}/{doc_type}/{filename}"
-# → sorted/2026/Rechnung/2026-01-15_Rechnung-Strom.pdf
+# → sorted/2026/Rechnung/2026-01-15_Strom.pdf
 
 # Mit Monat
 folder_template: "{doc_type}/{year}/{month}/{filename}"
-# → sorted/Rechnung/2026/01/2026-01-15_Rechnung-Strom.pdf
+# → sorted/Rechnung/2026/01/2026-01-15_Strom.pdf
 
 # Flach (keine Unterordner)
 folder_template: "{filename}"
-# → sorted/2026-01-15_Rechnung-Strom.pdf
+# → sorted/2026-01-15_Strom.pdf
 ```
 
 ### System-Prompt anpassen
@@ -337,13 +337,15 @@ Die Web-UI hat drei Tabs:
 ### Dateinamen
 
 ```
-JJJJ-MM-TT_Dokumenttyp-Kurzinfo.ext
+JJJJ-MM-TT_Kurzinfo.ext
 ```
 
 Beispiele:
-- `2026-11-21_Rechnung-Sanitaerarbeiten-Firma-Krause.pdf`
-- `2025-06-01_Vertrag-Mietvertrag-Hauptstr-5.pdf`
-- `2026-03-10_Bescheid-Steuerbescheid-2025.pdf`
+- `2026-11-21_Sanitaerarbeiten-Firma-Krause.pdf`
+- `2025-06-01_Mietvertrag-Hauptstr-5.pdf`
+- `2026-03-10_Steuerbescheid-2025.pdf`
+
+> Der Dokumenttyp steht bereits im Ordnerpfad und wird nicht im Dateinamen wiederholt.
 
 ### Kurzinfo-Regeln
 

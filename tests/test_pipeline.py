@@ -138,7 +138,7 @@ class TestBuildTargetPath:
         )
         source = Path("/input/scan001.pdf")
         result = build_target_path(source, classification, config)
-        assert result == Path("/output/Rechnung/2026/2026-01-15_Rechnung-Strom-Januar.pdf")
+        assert result == Path("/output/Rechnung/2026/2026-01-15_Strom-Januar.pdf")
 
     def test_extension_preserved(self):
         config = Config(output_dir=Path("/output"))
@@ -182,7 +182,7 @@ class TestBuildTargetPath:
         )
         source = Path("/input/scan.pdf")
         result = build_target_path(source, classification, config)
-        assert result == Path("/output/2026/Rechnung/2026-03-15_Rechnung-Strom.pdf")
+        assert result == Path("/output/2026/Rechnung/2026-03-15_Strom.pdf")
 
     def test_custom_folder_template_with_month(self):
         """Template mit Monat."""
@@ -196,7 +196,7 @@ class TestBuildTargetPath:
         )
         source = Path("/input/scan.pdf")
         result = build_target_path(source, classification, config)
-        assert result == Path("/output/Rechnung/2026/03/2026-03-15_Rechnung-Test.pdf")
+        assert result == Path("/output/Rechnung/2026/03/2026-03-15_Test.pdf")
 
     def test_flat_folder_template(self):
         """Flache Struktur ohne Unterordner."""
@@ -210,7 +210,7 @@ class TestBuildTargetPath:
         )
         source = Path("/input/scan.pdf")
         result = build_target_path(source, classification, config)
-        assert result == Path("/output/2026-01-01_Brief-Test.pdf")
+        assert result == Path("/output/2026-01-01_Test.pdf")
 
 
 # ============================================================

@@ -290,7 +290,7 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
             edit_date = str(row[3]) if len(row) > 3 else ""
 
             # OCR-Info aus Cache
-            ocr_info = ""
+            ocr_info = "✅ OK"
             for entry in cached_results:
                 if entry.get("filename") == filename:
                     if entry.get("ocr_quality") != "ok":
@@ -314,10 +314,10 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
         table_data: Any,
         folder_template: str,
         output_dir: str,
-    ) -> tuple[list[list[str]], list[dict], str]:
+    ) -> tuple[list[list[str]], list[dict]]:
         """Übernimmt editierte Werte in Cache und aktualisiert Tabelle."""
         if selected_idx < 0 or not cached_results or selected_idx >= len(cached_results):
-            return gr.update(), cached_results, "⚠️ Keine Zeile ausgewählt."
+            return gr.update(), cached_results
 
         entry = cached_results[selected_idx]
         entry["doc_type"] = edit_type.strip()
@@ -350,7 +350,7 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
                 conf_str, status, str(target.parent), target.name,
             ])
 
-        return rows, cached_results, f"✅ Änderung übernommen: {entry['filename']}"
+        return rows, cached_results
 
     def do_save_config(
         profile_name: str, custom_url: str, custom_model: str,
@@ -423,7 +423,6 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
                         edit_info = gr.Textbox(label="Kurzinfo")
                         edit_date = gr.Textbox(label="Datum (JJJJ-MM-TT)")
                         apply_btn = gr.Button("✅ Übernehmen", variant="primary")
-                        apply_status = gr.Textbox(label="", interactive=False, lines=1)
 
             # ======== Tab 2: Einstellungen ========
             with gr.Tab("⚙️ Einstellungen"):
@@ -530,7 +529,7 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
                 selected_idx_state, edit_type, edit_info, edit_date,
                 cached_state, result_table, folder_template_input, output_dir_input,
             ],
-            outputs=[result_table, cached_state, apply_status],
+            outputs=[result_table, cached_state],
         )
 
         save_btn.click(

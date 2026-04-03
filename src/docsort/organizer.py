@@ -58,7 +58,7 @@ def build_target_path(
     year = doc_date[:4]
     month = doc_date[5:7] if len(doc_date) >= 7 else "01"
 
-    filename = f"{doc_date}_{classification.doc_type}-{classification.short_info}{ext}"
+    filename = f"{doc_date}_{classification.short_info}{ext}"
 
     relative = config.folder_template.format(
         doc_type=classification.doc_type,
