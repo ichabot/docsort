@@ -381,50 +381,48 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
         with gr.Tabs():
             # ======== Tab 1: Verarbeitung ========
             with gr.Tab("📁 Verarbeitung"):
-                file_input = gr.File(
-                    label="Dokumente hochladen (Drag & Drop)",
-                    file_count="multiple",
-                    type="filepath",
+                # --- Upload + Buttons ---
+                with gr.Row():
+                    file_input = gr.File(
+                        label="Dateien auswählen",
+                        file_count="multiple",
+                        type="filepath",
+                        scale=3,
+                    )
+                    with gr.Column(scale=1, min_width=180):
+                        analyze_btn = gr.Button("🔍 Analysieren", variant="secondary")
+                        execute_btn = gr.Button("▶️ Ausführen", variant="primary")
+
+                # --- Log einklappbar ---
+                with gr.Accordion("📋 Log", open=False):
+                    log_output = gr.Textbox(lines=8, interactive=False, show_label=False)
+
+                # --- Ergebnis-Tabelle (volle Breite) ---
+                gr.Markdown("### 📊 Ergebnis — Zeile anklicken für Vorschau und Bearbeitung")
+                result_table = gr.Dataframe(
+                    headers=["Datei", "Typ", "Kurzinfo", "Datum", "Konfidenz", "Status", "Zielpfad", "Zieldatei"],
+                    datatype=["str"] * 8,
+                    col_count=(8, "fixed"),
+                    interactive=False,
                 )
 
+                # --- Dokument & Bearbeitung darunter ---
+                gr.Markdown("### 👁️ Dokument & Bearbeitung")
                 with gr.Row():
-                    analyze_btn = gr.Button("🔍 Analysieren (Vorschau)", variant="secondary", scale=1)
-                    execute_btn = gr.Button("▶️ Ausführen", variant="primary", scale=1)
-
-                log_output = gr.Textbox(label="Log", lines=6, interactive=False)
-
-                gr.Markdown("### 📊 Ergebnis — Klicke eine Zeile an um Details zu sehen und zu bearbeiten")
-
-                with gr.Row():
-                    # --- Linke Seite: Tabelle ---
+                    # Vorschau (groß)
                     with gr.Column(scale=3):
-                        result_table = gr.Dataframe(
-                            headers=["Datei", "Typ", "Kurzinfo", "Datum", "Konfidenz", "Status", "Zielpfad", "Zieldatei"],
-                            datatype=["str"] * 8,
-                            col_count=(8, "fixed"),
-                            interactive=False,
-                            label="Ergebnis (read-only — zum Bearbeiten Zeile anklicken)",
-                        )
-
-                    # --- Rechte Seite: Seitenpanel ---
-                    with gr.Column(scale=2):
-                        gr.Markdown("### 👁️ Dokument & Bearbeitung")
-
-                        # Preview
                         preview_html = gr.HTML(
                             value=_placeholder("Zeile in der Tabelle anklicken um Dokument anzuzeigen."),
                         )
 
-                        # OCR-Qualitäts-Warnung
-                        ocr_warning = gr.Textbox(label="OCR-Qualität", visible=True, interactive=False, lines=1)
-
-                        # Edit-Felder
-                        gr.Markdown("#### ✏️ Klassifizierung anpassen")
+                    # Edit-Felder (rechts daneben)
+                    with gr.Column(scale=1, min_width=280):
+                        ocr_warning = gr.Textbox(label="OCR-Qualität", interactive=False, lines=1)
                         edit_filename = gr.Textbox(label="Datei", interactive=False)
                         edit_type = gr.Textbox(label="Dokumenttyp")
                         edit_info = gr.Textbox(label="Kurzinfo")
                         edit_date = gr.Textbox(label="Datum (JJJJ-MM-TT)")
-                        apply_btn = gr.Button("✅ Änderung übernehmen", variant="primary")
+                        apply_btn = gr.Button("✅ Übernehmen", variant="primary")
                         apply_status = gr.Textbox(label="", interactive=False, lines=1)
 
             # ======== Tab 2: Einstellungen ========
