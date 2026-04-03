@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "docsort"
+version = "0.1.0"
+description = "Automatische Klassifizierung und Sortierung eingescannter Dokumente per OCR und lokalem LLM"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+keywords = ["ocr", "document-sorting", "llm", "docling", "automation"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Office/Business",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "docling>=2.0",
+    "openai>=1.0",
+    "gradio>=4.0",
+    "click>=8.0",
+]
+
+[project.optional-dependencies]
+gpu = ["torch>=2.0", "torchvision", "torchaudio"]
+ocr-onnxtr = ["docling-ocr-onnxtr[gpu]"]
+dev = ["pytest>=7.0", "pytest-cov"]
+
+[project.scripts]
+docsort = "docsort.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
