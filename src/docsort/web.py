@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
+
+# Gradio Telemetrie deaktivieren
+os.environ["GRADIO_ANALYTICS_ENABLED"] = "false"
 
 import gradio as gr
 
