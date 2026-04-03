@@ -417,11 +417,15 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
 
                     # Edit-Felder (rechts daneben)
                     with gr.Column(scale=1, min_width=280):
-                        ocr_warning = gr.Textbox(label="OCR-Qualität", interactive=False, lines=1)
-                        edit_filename = gr.Textbox(label="Datei", interactive=False)
-                        edit_type = gr.Textbox(label="Dokumenttyp")
-                        edit_info = gr.Textbox(label="Kurzinfo")
+                        edit_info = gr.Textbox(label="Zieldatei")
+                        edit_type = gr.Dropdown(
+                            label="Dokumenttyp",
+                            choices=config.doc_types,
+                            allow_custom_value=True,
+                        )
                         edit_date = gr.Textbox(label="Datum (JJJJ-MM-TT)")
+                        edit_filename = gr.Textbox(label="Quelldatei", interactive=False)
+                        ocr_warning = gr.Textbox(label="OCR-Qualität", interactive=False, lines=1)
                         apply_btn = gr.Button("✅ Übernehmen", variant="primary")
 
             # ======== Tab 2: Einstellungen ========
