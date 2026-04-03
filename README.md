@@ -1,70 +1,73 @@
 # 📄 DocSort
 
-**Automatische Klassifizierung und Sortierung eingescannter Dokumente per OCR und lokalem LLM.**
+> 🇩🇪 [Deutsche Version / German Version](README_DE.md)
 
-DocSort liest eingescannte Dokumente (PDF, DOCX, XLSX, Bilder etc.) ein, extrahiert den Text per OCR, klassifiziert den Dokumenttyp per LLM und sortiert die Dateien automatisch in eine einheitliche Ordnerstruktur mit sprechendem Dateinamen.
+**Automatic classification and sorting of scanned documents using OCR and local LLM.**
+
+DocSort reads scanned documents (PDF, DOCX, XLSX, images, etc.), extracts text via OCR, classifies the document type using an LLM, and automatically sorts files into a consistent folder structure with descriptive filenames.
 
 ---
 
 ## ✨ Features
 
-- **Universelle Dokumentenformate** — PDF, DOCX, XLSX, PPTX, ODT, JPG, PNG, TIFF und mehr
-- **GPU-beschleunigte OCR** — Docling mit OnnxTR OCR-Engine auf NVIDIA GPUs
-- **Multi-LLM Support** — LM Studio, Ollama, OpenAI, Anthropic Claude, Google Gemini
-- **Einheitliche Benennung** — `JJJJ-MM-TT_Dokumenttyp-Kurzinfo.ext`
-- **Flexible Ordnerstruktur** — konfigurierbares Template (`{doc_type}/{year}`, `{year}/{doc_type}` etc.)
-- **YAML-Konfiguration** — alle Einstellungen persistent in `docsort.yaml`
-- **LLM-Profile** — schnell zwischen Providern wechseln
-- **Anpassbarer System-Prompt** — Klassifizierung individuell steuern
-- **Confidence-Schwelle** — unsichere Klassifizierungen werden markiert
-- **Retry-Logik** — automatische Wiederholung bei LLM-Fehlern
-- **Undo-Funktion** — Operationen rückgängig machen per Undo-Log
-- **Copy & Move Modus** — Originale bleiben erhalten (Standard) oder werden verschoben
-- **Dry-Run** — Vorschau ohne Änderungen
-- **CLI & Web-UI** — Kommandozeile (Click) oder grafische Oberfläche (Gradio)
-- **OCR-Qualitäts-Check** — Warnung bei leerem oder unleserlichem Text
-- **Watchfolder** — Verzeichnis überwachen und neue Dateien automatisch verarbeiten
-- **Dokument-Vorschau** — PDF/Bild-Preview direkt in der Web-UI
-- **Fehlertoleranz** — Eine fehlerhafte Datei stoppt nicht den Rest
+- **Universal document formats** — PDF, DOCX, XLSX, PPTX, ODT, JPG, PNG, TIFF and more
+- **GPU-accelerated OCR** — Docling with OnnxTR OCR engine on NVIDIA GPUs
+- **Multi-LLM support** — LM Studio, Ollama, OpenAI, Anthropic Claude, Google Gemini
+- **Sender detection** — Automatically identifies the document sender/issuer
+- **Consistent naming** — `YYYY-MM-DD_Description.ext`
+- **Flexible folder structure** — Configurable template (`{doc_type}/{year}/{absender}/{filename}` etc.)
+- **YAML configuration** — All settings persisted in `docsort.yaml`
+- **LLM profiles** — Quickly switch between providers
+- **Customizable system prompt** — Tailor classification to your needs
+- **Confidence threshold** — Uncertain classifications are flagged
+- **Retry logic** — Automatic retry on LLM errors
+- **Undo function** — Revert operations via undo log
+- **Copy & Move mode** — Originals stay intact (default) or get moved
+- **Dry-run** — Preview without changes
+- **CLI & Web UI** — Command line (Click) or graphical interface (Gradio)
+- **OCR quality check** — Warning on empty or unreadable text
+- **Watchfolder** — Monitor a directory and auto-process new files
+- **Document preview** — PDF/image preview directly in the Web UI
+- **Fault tolerance** — One failed file doesn't stop the rest
 
 ---
 
-## 📋 Voraussetzungen
+## 📋 Requirements
 
-| Komponente | Version | Hinweis |
+| Component | Version | Note |
 |---|---|---|
-| **Python** | 3.11+ | Empfohlen: 3.12 |
-| **uv** | aktuell | Paketmanager ([Installieren](https://docs.astral.sh/uv/getting-started/installation/)) |
-| **LLM-Server** | — | LM Studio, Ollama (lokal) oder Cloud-API (OpenAI, Claude, Gemini) |
-| **NVIDIA GPU** | optional | Empfohlen: RTX 4070 Ti SUPER (12 GB VRAM) |
-| **CUDA** | 12.8 | Für GPU-Beschleunigung |
+| **Python** | 3.11+ | Recommended: 3.12 |
+| **uv** | latest | Package manager ([Install](https://docs.astral.sh/uv/getting-started/installation/)) |
+| **LLM server** | — | LM Studio, Ollama (local) or cloud API (OpenAI, Claude, Gemini) |
+| **NVIDIA GPU** | optional | Recommended: RTX 4070 Ti SUPER (12 GB VRAM) |
+| **CUDA** | 12.8 | For GPU acceleration |
 
-### LLM einrichten
+### Setting up an LLM
 
-DocSort unterstützt 5 LLM-Provider out of the box:
+DocSort supports 5 LLM providers out of the box:
 
-| Provider | Typ | Kosten | Setup |
+| Provider | Type | Cost | Setup |
 |---|---|---|---|
-| **LM Studio** | Lokal | Kostenlos | [lmstudio.ai](https://lmstudio.ai/) → Modell laden → Server starten |
-| **Ollama** | Lokal | Kostenlos | [ollama.com](https://ollama.com/) → `ollama pull llama3` |
-| **OpenAI** | Cloud | ~$0.003/Dok | API-Key von [platform.openai.com](https://platform.openai.com/) |
-| **Anthropic Claude** | Cloud | ~$0.003/Dok | API-Key von [console.anthropic.com](https://console.anthropic.com/) |
-| **Google Gemini** | Cloud | ~$0.001/Dok | API-Key von [aistudio.google.com](https://aistudio.google.com/) |
+| **LM Studio** | Local | Free | [lmstudio.ai](https://lmstudio.ai/) → Load model → Start server |
+| **Ollama** | Local | Free | [ollama.com](https://ollama.com/) → `ollama pull llama3` |
+| **OpenAI** | Cloud | ~$0.003/doc | API key from [platform.openai.com](https://platform.openai.com/) |
+| **Anthropic Claude** | Cloud | ~$0.003/doc | API key from [console.anthropic.com](https://console.anthropic.com/) |
+| **Google Gemini** | Cloud | ~$0.001/doc | API key from [aistudio.google.com](https://aistudio.google.com/) |
 
-> **Empfehlung für den Start:** LM Studio oder Ollama — kostenlos, lokal, keine Daten verlassen den Rechner.
+> **Recommendation:** LM Studio or Ollama — free, local, no data leaves your machine.
 
 ---
 
 ## 🚀 Installation
 
-### 1. Repository klonen
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/ichabot/docsort.git
 cd docsort
 ```
 
-### 2. Python-Umgebung erstellen (mit uv)
+### 2. Create Python environment (using uv)
 
 ```bash
 uv venv
@@ -72,345 +75,365 @@ source .venv/bin/activate   # Linux/macOS
 # .venv\Scripts\activate    # Windows
 ```
 
-### 3. PyTorch mit CUDA installieren (GPU)
+### 3. Install PyTorch with CUDA (GPU)
 
 ```bash
 uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
 ```
 
-> **Ohne GPU?** Diesen Schritt überspringen — DocSort fällt automatisch auf CPU zurück.
+> **No GPU?** Skip this step — DocSort automatically falls back to CPU.
 
-### 4. DocSort installieren
+### 4. Install DocSort
 
 ```bash
-# Standard-Installation (OpenAI-kompatible LLMs)
+# Standard installation (OpenAI-compatible LLMs)
 uv pip install -e .
 
-# Mit Anthropic Claude Support
+# With Anthropic Claude support
 uv pip install -e ".[anthropic]"
 
-# Mit allem (Anthropic + Dev-Tools)
+# With everything (Anthropic + dev tools)
 uv pip install -e ".[all-llm,dev]"
 ```
 
-### 5. OnnxTR OCR-Engine (optional, empfohlen)
+### 5. OnnxTR OCR engine (optional, recommended)
 
 ```bash
 uv pip install "docling-ocr-onnxtr[gpu]"
 ```
 
-### 6. Config erstellen
+### 6. Create config
 
 ```bash
 docsort init
 ```
 
-Erstellt eine `docsort.yaml` mit allen Einstellungen. Alternativ `docsort.example.yaml` als Vorlage nutzen.
+Creates a `docsort.yaml` with all settings. Alternatively, use `docsort.example.yaml` as a template.
 
 ---
 
-## 🔧 Konfiguration
+## 🔧 Configuration
 
-DocSort wird über eine YAML-Datei konfiguriert. Suchpfade:
-1. `./docsort.yaml` (aktuelles Verzeichnis)
+DocSort is configured via a YAML file. Search paths:
+1. `./docsort.yaml` (current directory)
 2. `~/.config/docsort/docsort.yaml`
 
-### Beispiel-Config
+### Example config
 
 ```yaml
-# Aktives LLM-Profil
+# Active LLM profile
 active_profile: lm-studio
 
-# Eigene Profile hinzufügen/anpassen
+# Add/customize profiles
 profiles:
   openai:
-    api_key: sk-dein-key-hier
+    api_key: sk-your-key-here
   anthropic:
-    api_key: sk-ant-dein-key-hier
-  mein-server:
+    api_key: sk-ant-your-key-here
+  my-server:
     provider: openai
     base_url: http://192.168.1.100:8080/v1
-    model: mein-modell
+    model: my-model
     api_key: optional
-    description: Mein eigener LLM-Server
+    description: My own LLM server
 
-# Ausgabe
+# Output
 output_dir: ./sorted
 mode: copy
 
-# Ordnerstruktur-Template
-folder_template: "{doc_type}/{year}/{filename}"
+# Folder structure template
+folder_template: "{doc_type}/{year}/{absender}/{filename}"
 
-# Qualität
+# Quality
 confidence_threshold: 0.7
 max_retries: 2
 
-# Undo-Log aktivieren
+# Enable undo log
 undo_log: ./docsort_undo.csv
 ```
 
-### LLM-Profile
+### LLM Profiles
 
-Eingebaute Profile:
+Built-in profiles:
 
-| Profil | Provider | URL | Standard-Modell |
+| Profile | Provider | URL | Default model |
 |---|---|---|---|
-| `lm-studio` | openai | `localhost:1234/v1` | (LM Studio Standard) |
+| `lm-studio` | openai | `localhost:1234/v1` | (LM Studio default) |
 | `ollama` | openai | `localhost:11434/v1` | `llama3` |
 | `openai` | openai | `api.openai.com/v1` | `gpt-4o-mini` |
 | `anthropic` | anthropic | `api.anthropic.com` | `claude-sonnet-4-20250514` |
 | `gemini` | openai | `generativelanguage.googleapis.com/...` | `gemini-2.0-flash` |
 
-Profile anzeigen:
+Show profiles:
 
 ```bash
 docsort profiles
 ```
 
-### Ordnerstruktur-Template
+### Folder Structure Template
 
-Das Template bestimmt die Ordnerstruktur. Verfügbare Variablen:
+The template determines the folder structure. Available variables:
 
-| Variable | Beschreibung | Beispiel |
+| Variable | Description | Example |
 |---|---|---|
-| `{doc_type}` | Dokumenttyp | `Rechnung` |
-| `{absender}` | Absender/Aussteller | `Stadtwerke-Muenchen` |
-| `{year}` | Jahr aus Dokumentdatum | `2026` |
-| `{month}` | Monat aus Dokumentdatum | `03` |
-| `{filename}` | Generierter Dateiname | `2026-03-15_Strom-Abrechnung.pdf` |
+| `{doc_type}` | Document type | `Rechnung` |
+| `{absender}` | Sender/issuer | `Stadtwerke-Muenchen` |
+| `{year}` | Year from document date | `2026` |
+| `{month}` | Month from document date | `03` |
+| `{filename}` | Generated filename | `2026-03-15_Strom-Abrechnung.pdf` |
 
-Beispiele:
+Examples:
 
 ```yaml
-# Standard: Typ → Jahr → Absender (empfohlen)
+# Default: Type → Year → Sender (recommended)
 folder_template: "{doc_type}/{year}/{absender}/{filename}"
 # → sorted/Rechnung/2026/Stadtwerke-Muenchen/2026-01-15_Strom-Abrechnung.pdf
 
-# Ohne Absender-Ordner
+# Without sender folder
 folder_template: "{doc_type}/{year}/{filename}"
 # → sorted/Rechnung/2026/2026-01-15_Strom-Abrechnung.pdf
 
-# Jahr zuerst
+# Year first
 folder_template: "{year}/{doc_type}/{absender}/{filename}"
 # → sorted/2026/Rechnung/Stadtwerke-Muenchen/2026-01-15_Strom-Abrechnung.pdf
 
-# Flach (keine Unterordner)
+# Flat (no subfolders)
 folder_template: "{filename}"
 # → sorted/2026-01-15_Strom-Abrechnung.pdf
 ```
 
-### System-Prompt anpassen
+### Customizing the System Prompt
 
-Der System-Prompt steuert wie das LLM Dokumente klassifiziert. Du kannst ihn in der Config oder im Web-UI anpassen:
+The system prompt controls how the LLM classifies documents. Edit it in the config or Web UI:
 
 ```yaml
 system_prompt: |
-  Du bist ein Dokumenten-Klassifizierer für eine Arztpraxis.
-  Analysiere den folgenden Text und klassifiziere das Dokument.
+  You are a document classifier for a medical practice.
+  Analyze the following text and classify the document.
   
-  Erlaubte Dokumenttypen:
+  Allowed document types:
   {doc_types}
   
-  Antworte mit JSON:
-  {"doc_type": "...", "short_info": "...", "doc_date": "JJJJ-MM-TT", "confidence": 0.95}
+  Respond with JSON:
+  {"doc_type": "...", "absender": "...", "short_info": "...", "doc_date": "YYYY-MM-DD", "confidence": 0.95}
 ```
 
-> **Hinweis:** `{doc_types}` wird automatisch durch die konfigurierte Dokumenttypen-Liste ersetzt.
+> **Note:** `{doc_types}` is automatically replaced with the configured document types list.
 
-### Dokumenttypen anpassen
+### Customizing Document Types
 
 ```yaml
 doc_types:
-  - Rechnung
-  - Vertrag
-  - Arztbrief
-  - Laborbefund
-  - Rezept
-  - Überweisung
-  - Sonstiges
+  - Invoice
+  - Contract
+  - Letter
+  - Tax Notice
+  - Insurance
+  - Other
 ```
 
 ---
 
-## 💻 Nutzung
+## 💻 Usage
 
-### CLI — Kommandozeile
+### CLI — Command Line
 
-#### Dokumente verarbeiten
+#### Process documents
 
 ```bash
-# Standard (nutzt docsort.yaml)
+# Default (uses docsort.yaml)
 docsort process ./scans
 
-# Ausgabeverzeichnis angeben
-docsort process ./scans -o ./archiv
+# Specify output directory
+docsort process ./scans -o ./archive
 
-# Dry-Run: nur Vorschau
+# Dry-run: preview only
 docsort process ./scans --dry-run
 
-# Mit bestimmtem LLM-Profil
+# With specific LLM profile
 docsort process ./scans --profile openai
 
-# Dateien verschieben statt kopieren
+# Move files instead of copying
 docsort process ./scans --move
 
-# Alle Optionen
+# All options
 docsort process ./scans \
-    -o ./archiv \
+    -o ./archive \
     --move \
     --profile anthropic \
     --batch-size 16 \
     --verbose
 ```
 
-#### CLI-Optionen
+#### CLI Options
 
-| Option | Beschreibung | Standard |
+| Option | Description | Default |
 |---|---|---|
-| `-o, --output` | Ausgabeverzeichnis | `./sorted` |
-| `--copy / --move` | Kopieren oder verschieben | `--copy` |
-| `--dry-run` | Nur Vorschau | aus |
-| `--profile` | LLM-Profil | aus Config |
-| `--llm-url` | LLM API URL (überschreibt Profil) | — |
-| `--model` | Modellname (überschreibt Profil) | — |
-| `--api-key` | API-Key (überschreibt Profil) | — |
-| `--no-gpu` | GPU deaktivieren | GPU an |
-| `--batch-size` | OCR/Layout Batch-Größe | `32` |
-| `--config` | Pfad zur Config-Datei | auto |
-| `-v, --verbose` | Ausführliche Ausgabe | aus |
+| `-o, --output` | Output directory | `./sorted` |
+| `--copy / --move` | Copy or move files | `--copy` |
+| `--dry-run` | Preview only | off |
+| `--profile` | LLM profile | from config |
+| `--llm-url` | LLM API URL (overrides profile) | — |
+| `--model` | Model name (overrides profile) | — |
+| `--api-key` | API key (overrides profile) | — |
+| `--no-gpu` | Disable GPU | GPU on |
+| `--batch-size` | OCR/layout batch size | `32` |
+| `--config` | Path to config file | auto |
+| `-v, --verbose` | Verbose output | off |
 
-#### Watchfolder — automatische Verarbeitung
+#### Watchfolder — Automatic Processing
 
 ```bash
-# Verzeichnis überwachen (prüft alle 5 Sekunden)
+# Monitor directory (checks every 5 seconds)
 docsort watch ./scans -o ./sorted
 
-# Mit kürzerem Intervall
+# With shorter interval
 docsort watch ./scans --interval 2
 
-# Mit bestimmtem Profil und Move-Modus
-docsort watch ./scans -o ./archiv --profile openai --move
+# With specific profile and move mode
+docsort watch ./scans -o ./archive --profile openai --move
 ```
 
-Neue Dateien im überwachten Verzeichnis werden automatisch erkannt, per OCR gelesen, klassifiziert und einsortiert. Bereits verarbeitete Dateien werden nicht erneut verarbeitet. Beenden mit `Ctrl+C`.
+New files in the monitored directory are automatically detected, OCR-processed, classified, and sorted. Already processed files are skipped. Stop with `Ctrl+C`.
 
-#### Weitere Kommandos
+#### Additional Commands
 
 ```bash
-# Config erstellen
+# Create config
 docsort init
 
-# LLM-Profile anzeigen
+# Show LLM profiles
 docsort profiles
 
-# Letzte Operationen rückgängig machen
-docsort undo           # alle
-docsort undo -n 5      # letzte 5
+# Undo last operations
+docsort undo           # all
+docsort undo -n 5      # last 5
 ```
 
-### Web-UI — Grafische Oberfläche
+### Web UI — Graphical Interface
 
 ```bash
-# Standard auf Port 7860
+# Default on port 7860
 docsort web
 
-# Anderer Port
+# Different port
 docsort web --port 8080
 
-# Öffentlicher Link
+# Public link
 docsort web --share
 ```
 
-Die Web-UI hat drei Tabs:
+The Web UI has three tabs:
 
-1. **📁 Verarbeitung** — Dateien hochladen, Analysieren & Ausführen
-   - Ergebnis-Tabelle (read-only) mit Status und OCR-Qualität
-   - **Seitenpanel**: Zeile anklicken → PDF/Bild-Vorschau + Edit-Felder
-   - Dokumenttyp, Kurzinfo und Datum direkt korrigieren
-   - Änderungen übernehmen → Tabelle aktualisiert sich
-2. **⚙️ Einstellungen** — LLM-Profil, Ausgabe, Ordnerstruktur, Dokumenttypen, Confidence-Schwelle
-3. **📝 System-Prompt** — Klassifizierungs-Prompt anpassen
+1. **📁 Processing** — Upload files, analyze & execute
+   - Results table (read-only) with status and OCR quality
+   - **Side panel**: Click a row → PDF/image preview + edit fields
+   - Correct document type, sender, description and date
+   - Apply changes → table updates
+2. **⚙️ Settings** — LLM profile, output, folder structure, document types, confidence threshold
+3. **📝 System Prompt** — Customize the classification prompt
 
 ---
 
-## 📁 Ausgabe-Schema
+## 📁 Output Schema
 
-### Dateinamen
+### Filenames
 
 ```
-JJJJ-MM-TT_Kurzinfo.ext
+YYYY-MM-DD_Description.ext
 ```
 
-Beispiele:
+Examples:
 - `2026-11-21_Strom-Abrechnung-Januar.pdf`
 - `2025-06-01_Haftpflicht-Jahresbeitrag.pdf`
 - `2026-03-10_Einkommensteuer-2025.pdf`
 
-> Dokumenttyp und Absender stehen im Ordnerpfad und werden nicht im Dateinamen wiederholt.
+> Document type and sender are in the folder path and not repeated in the filename.
 
-### Kurzinfo-Regeln
+### Folder Structure (default)
 
-- Bindestriche statt Leerzeichen
-- Umlaute werden ersetzt: `ä→ae`, `ö→oe`, `ü→ue`, `ß→ss`
-- Keine Sonderzeichen außer Bindestrichen
-- Maximal 60 Zeichen
-- Kein Datum in der Kurzinfo
+```
+sorted/
+├── Rechnung/
+│   └── 2026/
+│       ├── Stadtwerke-Muenchen/
+│       │   └── 2026-01-15_Strom-Abrechnung.pdf
+│       └── Telekom/
+│           └── 2026-02-01_Mobilfunk-Februar.pdf
+├── Vertrag/
+│   └── 2025/
+│       └── Allianz-Versicherung/
+│           └── 2025-06-01_Haftpflicht.pdf
+└── Bescheid/
+    └── 2026/
+        └── Finanzamt-Muenchen/
+            └── 2026-03-10_Einkommensteuer-2025.pdf
+```
 
-### Standard-Dokumenttypen
+### Description Rules
+
+- Hyphens instead of spaces
+- Umlauts are replaced: `ä→ae`, `ö→oe`, `ü→ue`, `ß→ss`
+- No special characters except hyphens
+- Maximum 60 characters
+- No date in the description
+
+### Default Document Types
 
 Rechnung · Quittung · Vertrag · Kuendigung · Brief · Bescheid · Steuerbescheid · Kontoauszug · Lohnabrechnung · Versicherung · Mahnung · Angebot · Lieferschein · Gutschrift · Mietvertrag · Arbeitsvertrag · Zeugnis · Urkunde · Formular · Sonstiges
 
-> Über die Config oder Web-UI können eigene Dokumenttypen definiert werden.
+> Custom document types can be defined via config or Web UI.
 
-### Duplikate
+### Duplicates
 
-Bei Namenskollisionen: `_2`, `_3` etc.
+On name collisions: `_2`, `_3` etc.
 
 ---
 
-## 🏗️ Projektstruktur
+## 🏗️ Project Structure
 
 ```
 docsort/
-├── pyproject.toml              # Projekt-Konfiguration & Dependencies
-├── docsort.yaml                # Deine Config (nach docsort init)
-├── docsort.example.yaml        # Beispiel-Config als Vorlage
-├── README.md
+├── pyproject.toml              # Project config & dependencies
+├── docsort.yaml                # Your config (after docsort init)
+├── docsort.example.yaml        # Example config template
+├── README.md                   # This file (English)
+├── README_DE.md                # German documentation
 ├── LICENSE
 ├── .gitignore
 ├── src/
 │   └── docsort/
-│       ├── __init__.py         # Package-Init + Version
-│       ├── config.py           # YAML-Config, LLM-Profile, Laden/Speichern
-│       ├── extractor.py        # Docling Text-Extraktion + OCR + Qualitäts-Check
-│       ├── classifier.py       # Multi-LLM Klassifizierung (OpenAI + Anthropic)
-│       ├── organizer.py        # Dateien umbenennen + sortieren + Undo-Log
-│       ├── pipeline.py         # Orchestriert: extract → classify → organize
+│       ├── __init__.py         # Package init + version
+│       ├── config.py           # YAML config, LLM profiles, load/save
+│       ├── extractor.py        # Docling text extraction + OCR + quality check
+│       ├── classifier.py       # Multi-LLM classification (OpenAI + Anthropic)
+│       ├── organizer.py        # Rename + sort files + undo log
+│       ├── pipeline.py         # Orchestrates: extract → classify → organize
 │       ├── cli.py              # Click CLI (process, web, watch, undo, init, profiles)
-│       ├── web.py              # Gradio Web-UI mit Seitenpanel + PDF-Preview
-│       └── watcher.py          # Watchfolder — automatische Verarbeitung
+│       ├── web.py              # Gradio Web UI with side panel + PDF preview
+│       └── watcher.py          # Watchfolder — automatic processing
 └── tests/
     ├── __init__.py
-    └── test_pipeline.py        # Unit-Tests (55 Tests)
+    └── test_pipeline.py        # Unit tests (55 tests)
 ```
 
-### Pipeline-Ablauf
+### Pipeline Flow
 
 ```
-Eingabe-Datei
+Input File
     │
     ▼
-[1. Extractor]  ─── Docling + OCR → Text + Metadaten
+[1. Extractor]  ─── Docling + OCR → Text + Metadata
     │
     ▼
-[2. Classifier] ─── LLM (wählbar) → Typ, Kurzinfo, Datum, Konfidenz
-    │                 ↻ Retry bei Fehler
-    │                 ⚠ Warnung bei niedriger Konfidenz
+[2. Classifier] ─── LLM (selectable) → Type, Sender, Info, Date, Confidence
+    │                 ↻ Retry on error
+    │                 ⚠ Warning on low confidence
     ▼
-[3. Organizer]  ─── Template → Zielpfad → Kopieren/Verschieben
-    │                 📝 Undo-Log schreiben
+[3. Organizer]  ─── Template → Target path → Copy/Move
+    │                 📝 Write undo log
     ▼
-Sortierte Datei in Zielordner
+Sorted file in target folder
 ```
 
 ---
@@ -418,50 +441,50 @@ Sortierte Datei in Zielordner
 ## 🧪 Tests
 
 ```bash
-# Tests ausführen
+# Run tests
 pytest
 
-# Mit ausführlicher Ausgabe
+# Verbose output
 pytest -v
 
-# Mit Coverage-Report
+# With coverage report
 pytest --cov=docsort --cov-report=term-missing
 ```
 
-55 Tests decken ab:
-- Kurzinfo-Bereinigung (Umlaute, Sonderzeichen, Längenbegrenzung)
-- JSON-Extraktion (direkt, Markdown-Codeblock, eingebettet)
-- Datums-Fallback-Logik (LLM → Datei → heute)
-- Zielpfad-Aufbau mit verschiedenen Templates
-- Duplikat-Auflösung
-- Datei-Organisation (Dry-Run, Copy, Move, Undo-Log)
-- Dateisammlung (rekursiv, einzeln, leer, ungültig)
-- Config-System (Profile, YAML laden/speichern, Defaults)
-- OCR-Qualitäts-Erkennung (leer, wenig Text, Garbage-Zeichen)
-- Watchfolder (Datei-Stabilität, Run-Once)
+55 tests covering:
+- Description sanitization (umlauts, special characters, length limits)
+- JSON extraction (direct, markdown code blocks, embedded)
+- Date fallback logic (LLM → file date → today)
+- Target path construction with various templates
+- Duplicate resolution
+- File organization (dry-run, copy, move, undo log)
+- File collection (recursive, single file, empty, invalid)
+- Config system (profiles, YAML load/save, defaults)
+- OCR quality detection (empty, short text, garbage characters)
+- Watchfolder (file stability, run-once)
 
 ---
 
-## ⚡ GPU-Konfiguration
+## ⚡ GPU Configuration
 
-### Empfohlene Einstellungen (RTX 4070 Ti SUPER, 12 GB VRAM)
+### Recommended Settings (RTX 4070 Ti SUPER, 12 GB VRAM)
 
-| Parameter | Wert |
+| Parameter | Value |
 |---|---|
-| `ocr_batch_size` | `16` bis `32` |
-| `layout_batch_size` | `16` bis `32` |
+| `ocr_batch_size` | `16` to `32` |
+| `layout_batch_size` | `16` to `32` |
 | CUDA Version | 12.8 |
 
-GPU deaktivieren:
+Disable GPU:
 
 ```bash
 docsort process ./scans --no-gpu
 ```
 
-DocSort erkennt automatisch, ob CUDA verfügbar ist und fällt bei Bedarf auf CPU zurück.
+DocSort automatically detects whether CUDA is available and falls back to CPU if needed.
 
 ---
 
-## 📝 Lizenz
+## 📝 License
 
-MIT License — siehe [LICENSE](LICENSE)
+MIT License — see [LICENSE](LICENSE)
