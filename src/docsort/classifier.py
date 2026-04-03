@@ -1,11 +1,11 @@
-"""Dokumenten-Klassifizierung per LLM (LM Studio / OpenAI-kompatibel)."""
+"""Dokumenten-Klassifizierung per LLM — unterstützt OpenAI-kompatible APIs und Anthropic Claude."""
 
 from __future__ import annotations
 
 import json
 import logging
-import os
 import re
+import time
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -18,38 +18,6 @@ logger = logging.getLogger(__name__)
 
 # Maximale Textlänge die ans LLM gesendet wird
 MAX_TEXT_LENGTH = 3000
-
-SYSTEM_PROMPT = """\
-Du bist ein Dokumenten-Klassifizierer. Analysiere den folgenden Text eines eingescannten Dokuments \
-und bestimme den Dokumenttyp, eine kurze Beschreibung und das Dokumentdatum.
-
-Erlaubte Dokumenttypen:
-{doc_types}
-
-Antworte ausschließlich mit einem JSON-Objekt in diesem Format:
-{{
-  "doc_type": "Rechnung",
-  "short_info": "Sanitaerarbeiten-Firma-Krause",
-  "doc_date": "2026-11-21",
-  "confidence": 0.95
-}}
-
-Regeln für short_info:
-- Bindestriche statt Leerzeichen
-- Umlaute ersetzen: ä→ae, ö→oe, ü→ue, ß→ss
-- Keine Sonderzeichen außer Bindestrichen
-- Maximal 50 Zeichen
-- Kein Datum in der Kurzinfo
-- Kurz und aussagekräftig
-
-Regeln für doc_date:
-- Format: JJJJ-MM-TT
-- Falls kein Datum erkennbar: null
-
-Regeln für doc_type:
-- Muss einer der erlaubten Dokumenttypen sein
-- Falls unklar: "Sonstiges"
-"""
 
 
 @dataclass
@@ -163,7 +131,6 @@ def _resolve_date(
     """
     # Priorität 1: LLM-Datum
     if doc_date and doc_date.lower() not in ("null", "none", ""):
-        # Validierung
         try:
             datetime.strptime(doc_date, "%Y-%m-%d")
             return doc_date
@@ -182,8 +149,109 @@ def _resolve_date(
     return date.today().strftime("%Y-%m-%d")
 
 
+# ============================================================
+# LLM-Aufrufe: OpenAI-kompatibel und Anthropic nativ
+# ============================================================
+
+def _call_openai(system: str, user_text: str, config: Config) -> str:
+    """Ruft ein OpenAI-kompatibles LLM auf (OpenAI, LM Studio, Ollama, Gemini etc.).
+
+    Args:
+        system: System-Prompt.
+        user_text: Dokumenttext.
+        config: DocSort-Konfiguration.
+
+    Returns:
+        Rohe LLM-Antwort als String.
+    """
+    from openai import OpenAI
+
+    profile = config.get_active_profile()
+
+    client = OpenAI(
+        base_url=profile.base_url,
+        api_key=profile.api_key,
+    )
+
+    model = profile.model or "local-model"
+
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user_text},
+        ],
+        temperature=0.1,
+    )
+    return response.choices[0].message.content or ""
+
+
+def _call_anthropic(system: str, user_text: str, config: Config) -> str:
+    """Ruft die Anthropic Claude API nativ auf.
+
+    Args:
+        system: System-Prompt.
+        user_text: Dokumenttext.
+        config: DocSort-Konfiguration.
+
+    Returns:
+        Rohe LLM-Antwort als String.
+    """
+    try:
+        from anthropic import Anthropic
+    except ImportError:
+        raise ImportError(
+            "Das 'anthropic' Paket ist nicht installiert. "
+            "Installieren mit: uv pip install anthropic"
+        )
+
+    profile = config.get_active_profile()
+
+    client = Anthropic(api_key=profile.api_key)
+
+    response = client.messages.create(
+        model=profile.model or "claude-sonnet-4-20250514",
+        max_tokens=1024,
+        system=system,
+        messages=[
+            {"role": "user", "content": user_text},
+        ],
+        temperature=0.1,
+    )
+
+    # Anthropic gibt eine Liste von Content-Blöcken zurück
+    text_parts = []
+    for block in response.content:
+        if hasattr(block, "text"):
+            text_parts.append(block.text)
+    return "\n".join(text_parts)
+
+
+def _call_llm(system: str, user_text: str, config: Config) -> str:
+    """Ruft das LLM auf — wählt automatisch den richtigen Provider.
+
+    Args:
+        system: System-Prompt.
+        user_text: Dokumenttext.
+        config: DocSort-Konfiguration.
+
+    Returns:
+        Rohe LLM-Antwort als String.
+    """
+    profile = config.get_active_profile()
+
+    if profile.provider == "anthropic":
+        return _call_anthropic(system, user_text, config)
+    else:
+        return _call_openai(system, user_text, config)
+
+
+# ============================================================
+# Klassifizierung
+# ============================================================
+
 def classify(doc: ExtractedDoc, config: Config) -> Classification:
-    """Klassifiziert ein Dokument per LLM.
+    """Klassifiziert ein Dokument per LLM mit Retry-Logik.
 
     Args:
         doc: Extrahiertes Dokument mit Text.
@@ -191,52 +259,66 @@ def classify(doc: ExtractedDoc, config: Config) -> Classification:
 
     Returns:
         Classification mit Typ, Kurzinfo, Datum und Konfidenz.
+
+    Raises:
+        RuntimeError: Wenn nach allen Retries keine valide Klassifizierung möglich.
     """
-    from openai import OpenAI
-
-    client = OpenAI(
-        base_url=config.llm_base_url,
-        api_key=config.llm_api_key,
-    )
-
-    system = SYSTEM_PROMPT.format(doc_types=", ".join(config.doc_types))
+    system = config.system_prompt.format(doc_types=", ".join(config.doc_types))
     user_text = doc.text[:MAX_TEXT_LENGTH] if doc.text else "(Kein Text extrahiert)"
 
-    kwargs: dict[str, Any] = {
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user_text},
-        ],
-        "temperature": 0.1,
-    }
-    if config.llm_model:
-        kwargs["model"] = config.llm_model
-    else:
-        kwargs["model"] = "local-model"
+    last_error: Exception | None = None
+    max_attempts = max(1, config.max_retries + 1)
 
-    response = client.chat.completions.create(**kwargs)
-    raw = response.choices[0].message.content or ""
+    for attempt in range(1, max_attempts + 1):
+        try:
+            raw = _call_llm(system, user_text, config)
+            data = _extract_json(raw)
 
-    data = _extract_json(raw)
+            doc_type = data.get("doc_type", "Sonstiges")
+            if doc_type not in config.doc_types:
+                logger.warning("Unbekannter Dokumenttyp '%s' — verwende 'Sonstiges'.", doc_type)
+                doc_type = "Sonstiges"
 
-    doc_type = data.get("doc_type", "Sonstiges")
-    if doc_type not in config.doc_types:
-        logger.warning("Unbekannter Dokumenttyp '%s' — verwende 'Sonstiges'.", doc_type)
-        doc_type = "Sonstiges"
+            short_info = sanitize_short_info(data.get("short_info", "Dokument"))
+            if not short_info:
+                short_info = "Dokument"
 
-    short_info = sanitize_short_info(data.get("short_info", "Dokument"))
-    if not short_info:
-        short_info = "Dokument"
+            raw_date = data.get("doc_date")
+            doc_date = _resolve_date(raw_date, doc.source_path)
 
-    raw_date = data.get("doc_date")
-    doc_date = _resolve_date(raw_date, doc.source_path)
+            confidence = float(data.get("confidence", 0.5))
+            confidence = max(0.0, min(1.0, confidence))
 
-    confidence = float(data.get("confidence", 0.5))
-    confidence = max(0.0, min(1.0, confidence))
+            # Confidence-Warnung
+            if confidence < config.confidence_threshold:
+                logger.warning(
+                    "Niedrige Konfidenz (%.0f%%) für %s — unter Schwelle von %.0f%%.",
+                    confidence * 100,
+                    doc.source_path.name if doc.source_path else "?",
+                    config.confidence_threshold * 100,
+                )
 
-    return Classification(
-        doc_type=doc_type,
-        short_info=short_info,
-        doc_date=doc_date,
-        confidence=confidence,
+            return Classification(
+                doc_type=doc_type,
+                short_info=short_info,
+                doc_date=doc_date,
+                confidence=confidence,
+            )
+
+        except Exception as exc:
+            last_error = exc
+            if attempt < max_attempts:
+                wait = 2 ** (attempt - 1)
+                logger.warning(
+                    "LLM-Fehler (Versuch %d/%d): %s — Retry in %ds...",
+                    attempt, max_attempts, exc, wait,
+                )
+                time.sleep(wait)
+            else:
+                logger.error(
+                    "LLM-Fehler nach %d Versuchen: %s", max_attempts, exc,
+                )
+
+    raise RuntimeError(
+        f"Klassifizierung fehlgeschlagen nach {max_attempts} Versuchen: {last_error}"
     )

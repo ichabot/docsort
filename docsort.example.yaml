@@ -1,0 +1,94 @@
+# DocSort Konfiguration
+# Kopiere diese Datei nach docsort.yaml und passe sie an.
+# CLI: docsort init (erstellt eine neue docsort.yaml)
+
+# Aktives LLM-Profil (lm-studio, ollama, openai, anthropic, gemini)
+active_profile: lm-studio
+
+# Eigene oder angepasste Profile
+# Eingebaute Profile müssen nur angegeben werden wenn sie geändert werden sollen.
+profiles:
+  # Beispiel: OpenAI mit eigenem API-Key
+  # openai:
+  #   provider: openai
+  #   base_url: https://api.openai.com/v1
+  #   model: gpt-4o-mini
+  #   api_key: sk-dein-api-key-hier
+  #   description: OpenAI API
+
+  # Beispiel: Anthropic Claude
+  # anthropic:
+  #   provider: anthropic
+  #   base_url: https://api.anthropic.com
+  #   model: claude-sonnet-4-20250514
+  #   api_key: sk-ant-dein-api-key-hier
+  #   description: Anthropic Claude API
+
+  # Beispiel: Eigenes Profil
+  # mein-server:
+  #   provider: openai
+  #   base_url: http://192.168.1.100:8080/v1
+  #   model: mein-modell
+  #   api_key: optional
+  #   description: Mein eigener LLM-Server
+
+# Ausgabeverzeichnis
+output_dir: ./sorted
+
+# Modus: copy oder move
+mode: copy
+
+# GPU-Beschleunigung
+gpu: true
+ocr_batch_size: 32
+layout_batch_size: 32
+
+# Ordnerstruktur-Template
+# Variablen: {doc_type}, {year}, {month}, {filename}
+# Standard: {doc_type}/{year}/{filename}
+# Beispiele:
+#   {year}/{doc_type}/{filename}          → 2026/Rechnung/...
+#   {doc_type}/{year}/{month}/{filename}  → Rechnung/2026/03/...
+#   {filename}                            → Flache Struktur
+folder_template: "{doc_type}/{year}/{filename}"
+
+# Dokumenttypen (entkommentieren um anzupassen)
+# doc_types:
+#   - Rechnung
+#   - Quittung
+#   - Vertrag
+#   - Kuendigung
+#   - Brief
+#   - Bescheid
+#   - Steuerbescheid
+#   - Kontoauszug
+#   - Lohnabrechnung
+#   - Versicherung
+#   - Mahnung
+#   - Angebot
+#   - Lieferschein
+#   - Gutschrift
+#   - Mietvertrag
+#   - Arbeitsvertrag
+#   - Zeugnis
+#   - Urkunde
+#   - Formular
+#   - Sonstiges
+
+# Confidence-Schwelle (0.0 - 1.0)
+# Unter diesem Wert wird eine Warnung angezeigt
+confidence_threshold: 0.7
+
+# Max. Retries bei LLM-Fehler
+max_retries: 2
+
+# Logging in Datei (leer = nur Konsole)
+# log_file: ./docsort.log
+
+# Undo-Log für Rückgängig-Funktion (leer = deaktiviert)
+# undo_log: ./docsort_undo.csv
+
+# System-Prompt (entkommentieren und anpassen)
+# Der Platzhalter {doc_types} wird durch die Dokumenttypen-Liste ersetzt.
+# system_prompt: |
+#   Du bist ein Dokumenten-Klassifizierer. ...

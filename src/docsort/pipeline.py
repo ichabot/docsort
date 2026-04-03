@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
@@ -24,6 +24,7 @@ class ProcessResult:
     organize_result: OrganizeResult | None = None
     error: str | None = None
     success: bool = False
+    low_confidence: bool = False
 
     @property
     def target(self) -> Path | None:
@@ -74,14 +75,18 @@ def process_file(file_path: Path, config: Config) -> ProcessResult:
         doc = extract_text(file_path, config)
         logger.debug("Extrahiert: %s (%d Zeichen)", file_path.name, len(doc.text))
 
-        # 2. Klassifizieren
+        # 2. Klassifizieren (mit Retry-Logik)
         classification = classify(doc, config)
         logger.debug(
-            "Klassifiziert: %s → %s (%s)",
+            "Klassifiziert: %s → %s (%s, %.0f%%)",
             file_path.name,
             classification.doc_type,
             classification.short_info,
+            classification.confidence * 100,
         )
+
+        # Confidence-Check
+        low_confidence = classification.confidence < config.confidence_threshold
 
         # 3. Organisieren
         result = organize(file_path, classification, config)
@@ -91,6 +96,7 @@ def process_file(file_path: Path, config: Config) -> ProcessResult:
             classification=classification,
             organize_result=result,
             success=result.success,
+            low_confidence=low_confidence,
         )
 
     except Exception as exc:
@@ -136,6 +142,10 @@ def process_directory(
     # Zusammenfassung
     ok = sum(1 for r in results if r.success)
     fail = len(results) - ok
-    logger.info("Fertig: %d/%d erfolgreich, %d Fehler.", ok, len(results), fail)
+    low_conf = sum(1 for r in results if r.low_confidence)
+    logger.info(
+        "Fertig: %d/%d erfolgreich, %d Fehler, %d mit niedriger Konfidenz.",
+        ok, len(results), fail, low_conf,
+    )
 
     return results

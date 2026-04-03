@@ -1,9 +1,9 @@
-"""Tests für DocSort — Classifier, Organizer und Pipeline-Hilfsfunktionen."""
+"""Tests für DocSort — Classifier, Organizer, Config und Pipeline."""
 
 from __future__ import annotations
 
 import json
-import shutil
+import textwrap
 from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from docsort.classifier import Classification, _extract_json, _resolve_date, sanitize_short_info
-from docsort.config import Config
+from docsort.config import Config, LLMProfile, load_config, save_config, BUILTIN_PROFILES, DEFAULT_FOLDER_TEMPLATE
 from docsort.organizer import OrganizeResult, build_target_path, organize, resolve_duplicate
 from docsort.pipeline import collect_files
 
@@ -119,7 +119,6 @@ class TestResolveDate:
         f = tmp_path / "test.pdf"
         f.write_text("dummy")
         result = _resolve_date(None, source_path=f)
-        # Sollte Datei-Datum zurückgeben (heute, da gerade erstellt)
         assert len(result) == 10  # YYYY-MM-DD format
 
 
@@ -133,10 +132,8 @@ class TestBuildTargetPath:
     def test_basic_path(self):
         config = Config(output_dir=Path("/output"))
         classification = Classification(
-            doc_type="Rechnung",
-            short_info="Strom-Januar",
-            doc_date="2026-01-15",
-            confidence=0.9,
+            doc_type="Rechnung", short_info="Strom-Januar",
+            doc_date="2026-01-15", confidence=0.9,
         )
         source = Path("/input/scan001.pdf")
         result = build_target_path(source, classification, config)
@@ -145,10 +142,8 @@ class TestBuildTargetPath:
     def test_extension_preserved(self):
         config = Config(output_dir=Path("/output"))
         classification = Classification(
-            doc_type="Brief",
-            short_info="Kuendigung",
-            doc_date="2025-06-01",
-            confidence=0.8,
+            doc_type="Brief", short_info="Kuendigung",
+            doc_date="2025-06-01", confidence=0.8,
         )
         source = Path("/input/doc.docx")
         result = build_target_path(source, classification, config)
@@ -157,10 +152,8 @@ class TestBuildTargetPath:
     def test_year_from_date(self):
         config = Config(output_dir=Path("/output"))
         classification = Classification(
-            doc_type="Vertrag",
-            short_info="Mietvertrag",
-            doc_date="2023-11-30",
-            confidence=0.95,
+            doc_type="Vertrag", short_info="Mietvertrag",
+            doc_date="2023-11-30", confidence=0.95,
         )
         source = Path("/input/contract.pdf")
         result = build_target_path(source, classification, config)
@@ -169,14 +162,54 @@ class TestBuildTargetPath:
     def test_uppercase_extension_normalized(self):
         config = Config(output_dir=Path("/output"))
         classification = Classification(
-            doc_type="Rechnung",
-            short_info="Test",
-            doc_date="2026-01-01",
-            confidence=0.9,
+            doc_type="Rechnung", short_info="Test",
+            doc_date="2026-01-01", confidence=0.9,
         )
         source = Path("/input/scan.PDF")
         result = build_target_path(source, classification, config)
         assert result.suffix == ".pdf"
+
+    def test_custom_folder_template_year_first(self):
+        """Template: Jahr/Typ statt Typ/Jahr."""
+        config = Config(
+            output_dir=Path("/output"),
+            folder_template="{year}/{doc_type}/{filename}",
+        )
+        classification = Classification(
+            doc_type="Rechnung", short_info="Strom",
+            doc_date="2026-03-15", confidence=0.9,
+        )
+        source = Path("/input/scan.pdf")
+        result = build_target_path(source, classification, config)
+        assert result == Path("/output/2026/Rechnung/2026-03-15_Rechnung-Strom.pdf")
+
+    def test_custom_folder_template_with_month(self):
+        """Template mit Monat."""
+        config = Config(
+            output_dir=Path("/output"),
+            folder_template="{doc_type}/{year}/{month}/{filename}",
+        )
+        classification = Classification(
+            doc_type="Rechnung", short_info="Test",
+            doc_date="2026-03-15", confidence=0.9,
+        )
+        source = Path("/input/scan.pdf")
+        result = build_target_path(source, classification, config)
+        assert result == Path("/output/Rechnung/2026/03/2026-03-15_Rechnung-Test.pdf")
+
+    def test_flat_folder_template(self):
+        """Flache Struktur ohne Unterordner."""
+        config = Config(
+            output_dir=Path("/output"),
+            folder_template="{filename}",
+        )
+        classification = Classification(
+            doc_type="Brief", short_info="Test",
+            doc_date="2026-01-01", confidence=0.9,
+        )
+        source = Path("/input/scan.pdf")
+        result = build_target_path(source, classification, config)
+        assert result == Path("/output/2026-01-01_Brief-Test.pdf")
 
 
 # ============================================================
@@ -205,7 +238,7 @@ class TestResolveDuplicate:
 
 
 # ============================================================
-# organize (mit tmp_path)
+# organize
 # ============================================================
 
 class TestOrganize:
@@ -218,10 +251,8 @@ class TestOrganize:
 
         config = Config(output_dir=tmp_path / "output", dry_run=True)
         classification = Classification(
-            doc_type="Rechnung",
-            short_info="Test",
-            doc_date="2026-01-01",
-            confidence=0.9,
+            doc_type="Rechnung", short_info="Test",
+            doc_date="2026-01-01", confidence=0.9,
         )
 
         result = organize(source, classification, config)
@@ -236,17 +267,15 @@ class TestOrganize:
 
         config = Config(output_dir=tmp_path / "output", mode="copy")
         classification = Classification(
-            doc_type="Rechnung",
-            short_info="Strom",
-            doc_date="2026-01-15",
-            confidence=0.9,
+            doc_type="Rechnung", short_info="Strom",
+            doc_date="2026-01-15", confidence=0.9,
         )
 
         result = organize(source, classification, config)
         assert result.success
         assert result.action == "copy"
         assert result.target.exists()
-        assert source.exists()  # Original bleibt erhalten
+        assert source.exists()
 
     def test_move_mode(self, tmp_path):
         source = tmp_path / "input" / "scan.pdf"
@@ -255,17 +284,37 @@ class TestOrganize:
 
         config = Config(output_dir=tmp_path / "output", mode="move")
         classification = Classification(
-            doc_type="Vertrag",
-            short_info="Mietvertrag",
-            doc_date="2025-06-01",
-            confidence=0.85,
+            doc_type="Vertrag", short_info="Mietvertrag",
+            doc_date="2025-06-01", confidence=0.85,
         )
 
         result = organize(source, classification, config)
         assert result.success
         assert result.action == "move"
         assert result.target.exists()
-        assert not source.exists()  # Original wurde verschoben
+        assert not source.exists()
+
+    def test_undo_log_written(self, tmp_path):
+        source = tmp_path / "input" / "scan.pdf"
+        source.parent.mkdir(parents=True)
+        source.write_text("dummy content")
+
+        undo_log = tmp_path / "undo.csv"
+        config = Config(
+            output_dir=tmp_path / "output",
+            mode="copy",
+            undo_log=str(undo_log),
+        )
+        classification = Classification(
+            doc_type="Rechnung", short_info="Test",
+            doc_date="2026-01-01", confidence=0.9,
+        )
+
+        organize(source, classification, config)
+        assert undo_log.exists()
+        content = undo_log.read_text()
+        assert "copy" in content
+        assert "scan.pdf" in content
 
 
 # ============================================================
@@ -318,3 +367,83 @@ class TestCollectFiles:
         config = Config()
         files = collect_files(tmp_path, config)
         assert len(files) == 0
+
+
+# ============================================================
+# Config & LLM-Profile
+# ============================================================
+
+class TestConfig:
+    """Tests für das Config-System."""
+
+    def test_default_config(self):
+        config = Config()
+        assert config.active_profile == "lm-studio"
+        assert len(config.profiles) == 5
+        assert "lm-studio" in config.profiles
+        assert "anthropic" in config.profiles
+
+    def test_builtin_profiles(self):
+        config = Config()
+        assert config.profiles["lm-studio"].provider == "openai"
+        assert config.profiles["anthropic"].provider == "anthropic"
+        assert config.profiles["gemini"].provider == "openai"
+        assert "localhost" in config.profiles["lm-studio"].base_url
+        assert "anthropic" in config.profiles["anthropic"].base_url
+
+    def test_apply_profile(self):
+        config = Config()
+        config.apply_profile("openai")
+        assert config.active_profile == "openai"
+        assert config.llm_provider == "openai"
+        assert "openai.com" in config.llm_base_url
+
+    def test_get_active_profile(self):
+        config = Config()
+        profile = config.get_active_profile()
+        assert profile.name == "lm-studio"
+        assert profile.provider == "openai"
+
+    def test_custom_profile(self):
+        config = Config()
+        config.profiles["mein-server"] = LLMProfile(
+            name="mein-server",
+            provider="openai",
+            base_url="http://192.168.1.100:8080/v1",
+            model="custom-model",
+            api_key="test-key",
+        )
+        config.apply_profile("mein-server")
+        assert config.llm_base_url == "http://192.168.1.100:8080/v1"
+
+    def test_config_to_dict_and_back(self):
+        config = Config()
+        config.confidence_threshold = 0.8
+        config.folder_template = "{year}/{doc_type}/{filename}"
+        data = config.to_dict()
+        restored = Config.from_dict(data)
+        assert restored.confidence_threshold == 0.8
+        assert restored.folder_template == "{year}/{doc_type}/{filename}"
+
+    def test_save_and_load_config(self, tmp_path):
+        config = Config()
+        config.confidence_threshold = 0.85
+        config.max_retries = 3
+        config.folder_template = "{year}/{doc_type}/{filename}"
+
+        path = save_config(config, tmp_path / "test.yaml")
+        loaded = load_config(path)
+
+        assert loaded.confidence_threshold == 0.85
+        assert loaded.max_retries == 3
+        assert loaded.folder_template == "{year}/{doc_type}/{filename}"
+
+    def test_load_config_not_found(self, tmp_path):
+        """Wenn keine Config gefunden → Standardwerte."""
+        config = load_config(tmp_path / "nonexistent.yaml")
+        assert config.active_profile == "lm-studio"
+        assert config.confidence_threshold == 0.7
+
+    def test_default_folder_template(self):
+        config = Config()
+        assert config.folder_template == "{doc_type}/{year}/{filename}"
