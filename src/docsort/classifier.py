@@ -28,6 +28,7 @@ class Classification:
     short_info: str
     doc_date: str  # JJJJ-MM-TT
     confidence: float
+    absender: str = ""
 
 
 def sanitize_short_info(text: str) -> str:
@@ -37,7 +38,7 @@ def sanitize_short_info(text: str) -> str:
         text: Rohe Kurzinfo vom LLM.
 
     Returns:
-        Bereinigte Kurzinfo mit max. 50 Zeichen.
+        Bereinigte Kurzinfo mit max. 60 Zeichen.
     """
     replacements = {
         "ä": "ae",
@@ -63,9 +64,9 @@ def sanitize_short_info(text: str) -> str:
     # Führende/nachfolgende Bindestriche entfernen
     text = text.strip("-")
 
-    # Max 50 Zeichen
-    if len(text) > 50:
-        text = text[:50].rstrip("-")
+    # Max 60 Zeichen
+    if len(text) > 60:
+        text = text[:60].rstrip("-")
 
     return text
 
@@ -283,6 +284,10 @@ def classify(doc: ExtractedDoc, config: Config) -> Classification:
             if not short_info:
                 short_info = "Dokument"
 
+            absender = sanitize_short_info(data.get("absender", "Unbekannt"))
+            if not absender:
+                absender = "Unbekannt"
+
             raw_date = data.get("doc_date")
             doc_date = _resolve_date(raw_date, doc.source_path)
 
@@ -303,6 +308,7 @@ def classify(doc: ExtractedDoc, config: Config) -> Classification:
                 short_info=short_info,
                 doc_date=doc_date,
                 confidence=confidence,
+                absender=absender,
             )
 
         except Exception as exc:

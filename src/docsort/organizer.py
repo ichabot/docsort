@@ -35,15 +35,16 @@ def build_target_path(
 
     Template-Variablen:
         {doc_type}  — Dokumenttyp (z.B. Rechnung)
+        {absender}  — Absender/Aussteller (z.B. Stadtwerke-Muenchen)
         {year}      — Jahr aus doc_date (z.B. 2026)
         {month}     — Monat aus doc_date (z.B. 01)
-        {filename}  — Generierter Dateiname (JJJJ-MM-TT_Typ-Kurzinfo.ext)
+        {filename}  — Generierter Dateiname (JJJJ-MM-TT_Kurzinfo.ext)
 
     Beispiele:
-        "{doc_type}/{year}/{filename}"          → Rechnung/2026/2026-01-15_Rechnung-Strom.pdf
-        "{year}/{doc_type}/{filename}"          → 2026/Rechnung/2026-01-15_Rechnung-Strom.pdf
-        "{doc_type}/{year}/{month}/{filename}"  → Rechnung/2026/01/2026-01-15_Rechnung-Strom.pdf
-        "{filename}"                            → 2026-01-15_Rechnung-Strom.pdf (flach)
+        "{doc_type}/{year}/{absender}/{filename}" → Rechnung/2026/Stadtwerke/2026-01-15_Strom.pdf
+        "{doc_type}/{year}/{filename}"            → Rechnung/2026/2026-01-15_Strom.pdf
+        "{year}/{doc_type}/{filename}"            → 2026/Rechnung/2026-01-15_Strom.pdf
+        "{filename}"                              → 2026-01-15_Strom.pdf (flach)
 
     Args:
         source: Quelldatei (für Extension).
@@ -60,8 +61,11 @@ def build_target_path(
 
     filename = f"{doc_date}_{classification.short_info}{ext}"
 
+    absender = classification.absender or "Unbekannt"
+
     relative = config.folder_template.format(
         doc_type=classification.doc_type,
+        absender=absender,
         year=year,
         month=month,
         filename=filename,

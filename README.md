@@ -174,28 +174,29 @@ Das Template bestimmt die Ordnerstruktur. Verfügbare Variablen:
 | Variable | Beschreibung | Beispiel |
 |---|---|---|
 | `{doc_type}` | Dokumenttyp | `Rechnung` |
+| `{absender}` | Absender/Aussteller | `Stadtwerke-Muenchen` |
 | `{year}` | Jahr aus Dokumentdatum | `2026` |
 | `{month}` | Monat aus Dokumentdatum | `03` |
-| `{filename}` | Generierter Dateiname | `2026-03-15_Strom.pdf` |
+| `{filename}` | Generierter Dateiname | `2026-03-15_Strom-Abrechnung.pdf` |
 
 Beispiele:
 
 ```yaml
-# Standard: Typ → Jahr (empfohlen)
+# Standard: Typ → Jahr → Absender (empfohlen)
+folder_template: "{doc_type}/{year}/{absender}/{filename}"
+# → sorted/Rechnung/2026/Stadtwerke-Muenchen/2026-01-15_Strom-Abrechnung.pdf
+
+# Ohne Absender-Ordner
 folder_template: "{doc_type}/{year}/{filename}"
-# → sorted/Rechnung/2026/2026-01-15_Strom.pdf
+# → sorted/Rechnung/2026/2026-01-15_Strom-Abrechnung.pdf
 
 # Jahr zuerst
-folder_template: "{year}/{doc_type}/{filename}"
-# → sorted/2026/Rechnung/2026-01-15_Strom.pdf
-
-# Mit Monat
-folder_template: "{doc_type}/{year}/{month}/{filename}"
-# → sorted/Rechnung/2026/01/2026-01-15_Strom.pdf
+folder_template: "{year}/{doc_type}/{absender}/{filename}"
+# → sorted/2026/Rechnung/Stadtwerke-Muenchen/2026-01-15_Strom-Abrechnung.pdf
 
 # Flach (keine Unterordner)
 folder_template: "{filename}"
-# → sorted/2026-01-15_Strom.pdf
+# → sorted/2026-01-15_Strom-Abrechnung.pdf
 ```
 
 ### System-Prompt anpassen
@@ -341,18 +342,18 @@ JJJJ-MM-TT_Kurzinfo.ext
 ```
 
 Beispiele:
-- `2026-11-21_Sanitaerarbeiten-Firma-Krause.pdf`
-- `2025-06-01_Mietvertrag-Hauptstr-5.pdf`
-- `2026-03-10_Steuerbescheid-2025.pdf`
+- `2026-11-21_Strom-Abrechnung-Januar.pdf`
+- `2025-06-01_Haftpflicht-Jahresbeitrag.pdf`
+- `2026-03-10_Einkommensteuer-2025.pdf`
 
-> Der Dokumenttyp steht bereits im Ordnerpfad und wird nicht im Dateinamen wiederholt.
+> Dokumenttyp und Absender stehen im Ordnerpfad und werden nicht im Dateinamen wiederholt.
 
 ### Kurzinfo-Regeln
 
 - Bindestriche statt Leerzeichen
 - Umlaute werden ersetzt: `ä→ae`, `ö→oe`, `ü→ue`, `ß→ss`
 - Keine Sonderzeichen außer Bindestrichen
-- Maximal 50 Zeichen
+- Maximal 60 Zeichen
 - Kein Datum in der Kurzinfo
 
 ### Standard-Dokumenttypen

@@ -132,13 +132,14 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
                 target_file = result.target.name if result.target else "—"
 
                 rows.append([
-                    fp.name, c.doc_type, c.short_info, c.doc_date,
+                    fp.name, c.doc_type, c.absender, c.short_info, c.doc_date,
                     conf_str, status, target_dir, target_file,
                 ])
                 cache.append({
                     "file_path": fp_str,
                     "filename": fp.name,
                     "doc_type": c.doc_type,
+                    "absender": c.absender,
                     "short_info": c.short_info,
                     "doc_date": c.doc_date,
                     "confidence": c.confidence,
@@ -149,7 +150,7 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
                 ocr_warn = f" 🔍 OCR-Qualität: {result.ocr_quality}" if result.ocr_quality != "ok" else ""
                 log_lines.append(f"[{i}/{len(files)}] {log_icon} {fp.name} → {c.doc_type} ({c.confidence:.0%}){ocr_warn}")
             else:
-                rows.append([fp.name, "—", "—", "—", "—", f"❌ {result.error or 'Fehler'}", "—", "—"])
+                rows.append([fp.name, "—", "—", "—", "—", "—", f"❌ {result.error or 'Fehler'}", "—", "—"])
                 log_lines.append(f"[{i}/{len(files)}] ✗ {fp.name}: {result.error}")
 
         return rows, "\n".join(log_lines), cache, file_map
@@ -191,6 +192,7 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
                     short_info=entry["short_info"],
                     doc_date=entry["doc_date"],
                     confidence=entry["confidence"],
+                    absender=entry.get("absender", "Unbekannt"),
                 )
 
                 try:
@@ -279,15 +281,16 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
             elif isinstance(table_data, list):
                 row = table_data[row_idx]
             else:
-                return gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), ""
+                return (gr.update(),) * 8
 
             filename = str(row[0])
             file_path_str = file_map.get(filename, "")
 
-            # Felder aus Cache laden
+            # Felder aus Tabelle: Datei, Typ, Absender, Kurzinfo, Datum, ...
             edit_type = str(row[1]) if len(row) > 1 else ""
-            edit_info = str(row[2]) if len(row) > 2 else ""
-            edit_date = str(row[3]) if len(row) > 3 else ""
+            edit_absender = str(row[2]) if len(row) > 2 else ""
+            edit_info = str(row[3]) if len(row) > 3 else ""
+            edit_date = str(row[4]) if len(row) > 4 else ""
 
             # OCR-Info aus Cache
             ocr_info = "✅ OK"
@@ -299,15 +302,16 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
 
             preview = render_preview(file_path_str)
 
-            return filename, edit_type, edit_info, edit_date, preview, row_idx, ocr_info
+            return filename, edit_type, edit_absender, edit_info, edit_date, preview, row_idx, ocr_info
 
         except Exception as exc:
             logger.warning("Tabellen-Auswahl Fehler: %s", exc)
-            return gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), ""
+            return (gr.update(),) * 8
 
     def apply_edit(
         selected_idx: int,
         edit_type: str,
+        edit_absender: str,
         edit_info: str,
         edit_date: str,
         cached_results: list[dict],
@@ -321,6 +325,7 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
 
         entry = cached_results[selected_idx]
         entry["doc_type"] = edit_type.strip()
+        entry["absender"] = sanitize_short_info(edit_absender.strip()) if edit_absender.strip() else entry.get("absender", "Unbekannt")
         entry["short_info"] = sanitize_short_info(edit_info.strip()) if edit_info.strip() else entry["short_info"]
         entry["doc_date"] = edit_date.strip() if edit_date.strip() else entry["doc_date"]
 
@@ -333,6 +338,7 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
             cl = Classification(
                 doc_type=e["doc_type"], short_info=e["short_info"],
                 doc_date=e["doc_date"], confidence=e["confidence"],
+                absender=e.get("absender", "Unbekannt"),
             )
             fp = Path(e["file_path"])
             target = build_target_path(fp, cl, cfg)
@@ -346,7 +352,7 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
             status = " | ".join(status_parts) if status_parts else "✅"
 
             rows.append([
-                fp.name, e["doc_type"], e["short_info"], e["doc_date"],
+                fp.name, e["doc_type"], e.get("absender", ""), e["short_info"], e["doc_date"],
                 conf_str, status, str(target.parent), target.name,
             ])
 
@@ -400,9 +406,9 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
                 # --- Ergebnis-Tabelle (volle Breite) ---
                 gr.Markdown("### 📊 Ergebnis — Zeile anklicken für Vorschau und Bearbeitung")
                 result_table = gr.Dataframe(
-                    headers=["Datei", "Typ", "Kurzinfo", "Datum", "Konfidenz", "Status", "Zielpfad", "Zieldatei"],
-                    datatype=["str"] * 8,
-                    col_count=(8, "fixed"),
+                    headers=["Datei", "Typ", "Absender", "Kurzinfo", "Datum", "Konf.", "Status", "Zielpfad", "Zieldatei"],
+                    datatype=["str"] * 9,
+                    col_count=(9, "fixed"),
                     interactive=False,
                 )
 
@@ -423,6 +429,7 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
                             choices=config.doc_types,
                             allow_custom_value=True,
                         )
+                        edit_absender = gr.Textbox(label="Absender")
                         edit_date = gr.Textbox(label="Datum (JJJJ-MM-TT)")
                         edit_filename = gr.Textbox(label="Quelldatei", interactive=False)
                         ocr_warning = gr.Textbox(label="OCR-Qualität", interactive=False, lines=1)
@@ -456,13 +463,13 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
                         gr.Markdown("### 📂 Ordnerstruktur")
                         folder_template_input = gr.Textbox(
                             label="Ordner-Template", value=config.folder_template,
-                            info="Variablen: {doc_type}, {year}, {month}, {filename}",
+                            info="{doc_type}, {absender}, {year}, {month}, {filename}",
                         )
                         gr.Markdown(
                             "**Beispiele:**\n"
+                            "- `{doc_type}/{year}/{absender}/{filename}` → Rechnung/2026/Telekom/...\n"
                             "- `{doc_type}/{year}/{filename}` → Rechnung/2026/...\n"
-                            "- `{year}/{doc_type}/{filename}` → 2026/Rechnung/...\n"
-                            "- `{doc_type}/{year}/{month}/{filename}` → Rechnung/2026/03/...\n"
+                            "- `{year}/{doc_type}/{absender}/{filename}` → 2026/Rechnung/Telekom/...\n"
                         )
                         gr.Markdown("### 📋 Dokumenttypen")
                         doc_types_input = gr.Textbox(
@@ -524,13 +531,13 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
         result_table.select(
             fn=on_table_select,
             inputs=[result_table, cached_state, file_map_state],
-            outputs=[edit_filename, edit_type, edit_info, edit_date, preview_html, selected_idx_state, ocr_warning],
+            outputs=[edit_filename, edit_type, edit_absender, edit_info, edit_date, preview_html, selected_idx_state, ocr_warning],
         )
 
         apply_btn.click(
             fn=apply_edit,
             inputs=[
-                selected_idx_state, edit_type, edit_info, edit_date,
+                selected_idx_state, edit_type, edit_absender, edit_info, edit_date,
                 cached_state, result_table, folder_template_input, output_dir_input,
             ],
             outputs=[result_table, cached_state],

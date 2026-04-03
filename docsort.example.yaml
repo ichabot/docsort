@@ -44,13 +44,14 @@ ocr_batch_size: 32
 layout_batch_size: 32
 
 # Ordnerstruktur-Template
-# Variablen: {doc_type}, {year}, {month}, {filename}
-# Standard: {doc_type}/{year}/{filename}
+# Variablen: {doc_type}, {absender}, {year}, {month}, {filename}
+# Standard: {doc_type}/{year}/{absender}/{filename}
 # Beispiele:
-#   {year}/{doc_type}/{filename}          → 2026/Rechnung/...
-#   {doc_type}/{year}/{month}/{filename}  → Rechnung/2026/03/...
-#   {filename}                            → Flache Struktur
-folder_template: "{doc_type}/{year}/{filename}"
+#   {doc_type}/{year}/{filename}                    → Rechnung/2026/...
+#   {year}/{doc_type}/{absender}/{filename}          → 2026/Rechnung/Stadtwerke/...
+#   {doc_type}/{year}/{month}/{absender}/{filename}  → Rechnung/2026/03/Stadtwerke/...
+#   {filename}                                       → Flache Struktur
+folder_template: "{doc_type}/{year}/{absender}/{filename}"
 
 # Dokumenttypen (entkommentieren um anzupassen)
 # doc_types:

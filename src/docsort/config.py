@@ -54,17 +54,27 @@ Erlaubte Dokumenttypen:
 Antworte ausschließlich mit einem JSON-Objekt in diesem Format:
 {{
   "doc_type": "Rechnung",
-  "short_info": "Sanitaerarbeiten-Firma-Krause",
+  "absender": "Stadtwerke-Muenchen",
+  "short_info": "Strom-Abrechnung-Januar",
   "doc_date": "2026-11-21",
   "confidence": 0.95
 }}
+
+Regeln für absender:
+- Name der Firma, Behörde oder Person die das Dokument erstellt/gesendet hat
+- Bindestriche statt Leerzeichen
+- Umlaute ersetzen: ä→ae, ö→oe, ü→ue, ß→ss
+- Keine Sonderzeichen außer Bindestrichen
+- Maximal 40 Zeichen
+- Falls nicht erkennbar: "Unbekannt"
 
 Regeln für short_info:
 - Bindestriche statt Leerzeichen
 - Umlaute ersetzen: ä→ae, ö→oe, ü→ue, ß→ss
 - Keine Sonderzeichen außer Bindestrichen
-- Maximal 50 Zeichen
+- Maximal 60 Zeichen
 - Kein Datum in der Kurzinfo
+- Kein Absender in der Kurzinfo (steht separat)
 - Kurz und aussagekräftig
 
 Regeln für doc_date:
@@ -76,7 +86,7 @@ Regeln für doc_type:
 - Falls unklar: "Sonstiges"
 """
 
-DEFAULT_FOLDER_TEMPLATE = "{doc_type}/{year}/{filename}"
+DEFAULT_FOLDER_TEMPLATE = "{doc_type}/{year}/{absender}/{filename}"
 
 # ============================================================
 # LLM-Profile

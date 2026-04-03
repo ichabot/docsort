@@ -40,9 +40,9 @@ class TestSanitizeShortInfo:
         assert sanitize_short_info("Wort   mit   Abstand") == "Wort-mit-Abstand"
 
     def test_max_length(self):
-        long = "A" * 60
+        long = "A" * 70
         result = sanitize_short_info(long)
-        assert len(result) <= 50
+        assert len(result) <= 60
 
     def test_empty_string(self):
         assert sanitize_short_info("") == ""
@@ -138,7 +138,7 @@ class TestBuildTargetPath:
         )
         source = Path("/input/scan001.pdf")
         result = build_target_path(source, classification, config)
-        assert result == Path("/output/Rechnung/2026/2026-01-15_Strom-Januar.pdf")
+        assert result == Path("/output/Rechnung/2026/Unbekannt/2026-01-15_Strom-Januar.pdf")
 
     def test_extension_preserved(self):
         config = Config(output_dir=Path("/output"))
@@ -447,7 +447,7 @@ class TestConfig:
 
     def test_default_folder_template(self):
         config = Config()
-        assert config.folder_template == "{doc_type}/{year}/{filename}"
+        assert config.folder_template == "{doc_type}/{year}/{absender}/{filename}"
 
 
 # ============================================================
