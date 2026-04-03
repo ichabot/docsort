@@ -25,6 +25,8 @@ class ProcessResult:
     error: str | None = None
     success: bool = False
     low_confidence: bool = False
+    ocr_quality: str = "ok"        # "ok", "low", "empty"
+    ocr_quality_info: str = ""
 
     @property
     def target(self) -> Path | None:
@@ -97,6 +99,8 @@ def process_file(file_path: Path, config: Config) -> ProcessResult:
             organize_result=result,
             success=result.success,
             low_confidence=low_confidence,
+            ocr_quality=doc.ocr_quality,
+            ocr_quality_info=doc.ocr_quality_info,
         )
 
     except Exception as exc:

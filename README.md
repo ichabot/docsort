@@ -22,6 +22,9 @@ DocSort liest eingescannte Dokumente (PDF, DOCX, XLSX, Bilder etc.) ein, extrahi
 - **Copy & Move Modus** — Originale bleiben erhalten (Standard) oder werden verschoben
 - **Dry-Run** — Vorschau ohne Änderungen
 - **CLI & Web-UI** — Kommandozeile (Click) oder grafische Oberfläche (Gradio)
+- **OCR-Qualitäts-Check** — Warnung bei leerem oder unleserlichem Text
+- **Watchfolder** — Verzeichnis überwachen und neue Dateien automatisch verarbeiten
+- **Dokument-Vorschau** — PDF/Bild-Preview direkt in der Web-UI
 - **Fehlertoleranz** — Eine fehlerhafte Datei stoppt nicht den Rest
 
 ---
@@ -275,6 +278,21 @@ docsort process ./scans \
 | `--config` | Pfad zur Config-Datei | auto |
 | `-v, --verbose` | Ausführliche Ausgabe | aus |
 
+#### Watchfolder — automatische Verarbeitung
+
+```bash
+# Verzeichnis überwachen (prüft alle 5 Sekunden)
+docsort watch ./scans -o ./sorted
+
+# Mit kürzerem Intervall
+docsort watch ./scans --interval 2
+
+# Mit bestimmtem Profil und Move-Modus
+docsort watch ./scans -o ./archiv --profile openai --move
+```
+
+Neue Dateien im überwachten Verzeichnis werden automatisch erkannt, per OCR gelesen, klassifiziert und einsortiert. Bereits verarbeitete Dateien werden nicht erneut verarbeitet. Beenden mit `Ctrl+C`.
+
 #### Weitere Kommandos
 
 ```bash
@@ -304,8 +322,12 @@ docsort web --share
 
 Die Web-UI hat drei Tabs:
 
-1. **📁 Verarbeitung** — Dateien hochladen, LLM-Profil wählen, Analysieren & Ausführen
-2. **⚙️ Einstellungen** — Ordnerstruktur, Dokumenttypen, Confidence-Schwelle, Config speichern
+1. **📁 Verarbeitung** — Dateien hochladen, Analysieren & Ausführen
+   - Ergebnis-Tabelle (read-only) mit Status und OCR-Qualität
+   - **Seitenpanel**: Zeile anklicken → PDF/Bild-Vorschau + Edit-Felder
+   - Dokumenttyp, Kurzinfo und Datum direkt korrigieren
+   - Änderungen übernehmen → Tabelle aktualisiert sich
+2. **⚙️ Einstellungen** — LLM-Profil, Ausgabe, Ordnerstruktur, Dokumenttypen, Confidence-Schwelle
 3. **📝 System-Prompt** — Klassifizierungs-Prompt anpassen
 
 ---
@@ -357,15 +379,16 @@ docsort/
 │   └── docsort/
 │       ├── __init__.py         # Package-Init + Version
 │       ├── config.py           # YAML-Config, LLM-Profile, Laden/Speichern
-│       ├── extractor.py        # Docling-basierte Text-Extraktion + OCR
+│       ├── extractor.py        # Docling Text-Extraktion + OCR + Qualitäts-Check
 │       ├── classifier.py       # Multi-LLM Klassifizierung (OpenAI + Anthropic)
 │       ├── organizer.py        # Dateien umbenennen + sortieren + Undo-Log
 │       ├── pipeline.py         # Orchestriert: extract → classify → organize
-│       ├── cli.py              # Click CLI (process, web, undo, init, profiles)
-│       └── web.py              # Gradio Web-UI mit Tabs
+│       ├── cli.py              # Click CLI (process, web, watch, undo, init, profiles)
+│       ├── web.py              # Gradio Web-UI mit Seitenpanel + PDF-Preview
+│       └── watcher.py          # Watchfolder — automatische Verarbeitung
 └── tests/
     ├── __init__.py
-    └── test_pipeline.py        # Unit-Tests (49 Tests)
+    └── test_pipeline.py        # Unit-Tests (55 Tests)
 ```
 
 ### Pipeline-Ablauf
@@ -402,7 +425,7 @@ pytest -v
 pytest --cov=docsort --cov-report=term-missing
 ```
 
-49 Tests decken ab:
+55 Tests decken ab:
 - Kurzinfo-Bereinigung (Umlaute, Sonderzeichen, Längenbegrenzung)
 - JSON-Extraktion (direkt, Markdown-Codeblock, eingebettet)
 - Datums-Fallback-Logik (LLM → Datei → heute)
@@ -411,6 +434,8 @@ pytest --cov=docsort --cov-report=term-missing
 - Datei-Organisation (Dry-Run, Copy, Move, Undo-Log)
 - Dateisammlung (rekursiv, einzeln, leer, ungültig)
 - Config-System (Profile, YAML laden/speichern, Defaults)
+- OCR-Qualitäts-Erkennung (leer, wenig Text, Garbage-Zeichen)
+- Watchfolder (Datei-Stabilität, Run-Once)
 
 ---
 

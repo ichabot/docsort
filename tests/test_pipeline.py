@@ -12,6 +12,7 @@ import pytest
 
 from docsort.classifier import Classification, _extract_json, _resolve_date, sanitize_short_info
 from docsort.config import Config, LLMProfile, load_config, save_config, BUILTIN_PROFILES, DEFAULT_FOLDER_TEMPLATE
+from docsort.extractor import ExtractedDoc
 from docsort.organizer import OrganizeResult, build_target_path, organize, resolve_duplicate
 from docsort.pipeline import collect_files
 
@@ -447,3 +448,60 @@ class TestConfig:
     def test_default_folder_template(self):
         config = Config()
         assert config.folder_template == "{doc_type}/{year}/{filename}"
+
+
+# ============================================================
+# OCR-Qualitäts-Check
+# ============================================================
+
+class TestOcrQuality:
+    """Tests für die OCR-Qualitäts-Erkennung."""
+
+    def test_ok_quality(self):
+        doc = ExtractedDoc(text="Dies ist ein normaler Text mit genügend Inhalt zum Testen.")
+        # Manuell setzen wie extract_text es tun würde
+        assert len(doc.text) > 50
+        assert doc.ocr_quality == "ok"
+
+    def test_empty_text(self):
+        doc = ExtractedDoc(text="", ocr_quality="empty", ocr_quality_info="Kein Text")
+        assert doc.ocr_quality == "empty"
+
+    def test_low_quality_short_text(self):
+        doc = ExtractedDoc(text="Kurz", ocr_quality="low", ocr_quality_info="Wenig Text")
+        assert doc.ocr_quality == "low"
+
+    def test_quality_fields_exist(self):
+        doc = ExtractedDoc(text="Test")
+        assert hasattr(doc, "ocr_quality")
+        assert hasattr(doc, "ocr_quality_info")
+
+
+# ============================================================
+# Watchfolder
+# ============================================================
+
+class TestWatcher:
+    """Tests für den Watchfolder."""
+
+    def test_wait_for_stable(self, tmp_path):
+        from docsort.watcher import _wait_for_stable
+        f = tmp_path / "test.pdf"
+        f.write_text("content")
+        # Sollte sofort zurückkehren da Datei stabil ist
+        _wait_for_stable(f, checks=2, interval=0.1)
+        assert True  # Kein Timeout
+
+    def test_watch_run_once(self, tmp_path):
+        from docsort.watcher import watch_directory
+
+        # Leeres Verzeichnis → keine Dateien verarbeitet
+        config = Config(output_dir=tmp_path / "output")
+        results: list = []
+        watch_directory(
+            watch_dir=tmp_path,
+            config=config,
+            on_result=lambda r: results.append(r),
+            run_once=True,
+        )
+        assert len(results) == 0

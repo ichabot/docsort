@@ -177,6 +177,63 @@ def undo(count: int, config_path: Path | None) -> None:
             click.secho(msg, fg="red")
 
 
+@main.command()
+@click.argument("watch_dir", type=click.Path(exists=True, path_type=Path))
+@click.option("-o", "--output", "output_dir", type=click.Path(path_type=Path), default=None, help="Ausgabeverzeichnis")
+@click.option("--copy/--move", "do_copy", default=None, help="Kopieren oder verschieben")
+@click.option("--profile", default=None, help="LLM-Profil")
+@click.option("--interval", type=float, default=5.0, help="Prüf-Intervall in Sekunden (Standard: 5)")
+@click.option("--config", "config_path", type=click.Path(path_type=Path), default=None, help="Config-Datei")
+@click.option("-v", "--verbose", is_flag=True, help="Ausführliche Ausgabe")
+def watch(
+    watch_dir: Path,
+    output_dir: Path | None,
+    do_copy: bool | None,
+    profile: str | None,
+    interval: float,
+    config_path: Path | None,
+    verbose: bool,
+) -> None:
+    """Verzeichnis überwachen und neue Dateien automatisch verarbeiten.
+
+    Beispiel: docsort watch ./scans -o ./sorted
+    """
+    config = load_config(config_path)
+
+    if output_dir:
+        config.output_dir = output_dir
+    if do_copy is not None:
+        config.mode = "copy" if do_copy else "move"
+    if profile:
+        config.apply_profile(profile)
+
+    _setup_logging(verbose, config.log_file)
+
+    p = config.get_active_profile()
+    click.secho("=== DocSort Watchfolder ===", fg="green", bold=True)
+    click.secho(f"Überwache: {watch_dir.resolve()}", fg="blue")
+    click.secho(f"Ausgabe:   {config.output_dir.resolve()}", fg="blue")
+    click.secho(f"Modus:     {'Kopieren' if config.mode == 'copy' else 'Verschieben'}", fg="blue")
+    click.secho(f"LLM:       {p.description or p.name}", fg="blue")
+    click.secho(f"Intervall: {interval}s", fg="blue")
+    click.secho("Drücke Ctrl+C zum Beenden.\n", fg="yellow")
+
+    from docsort.watcher import watch_directory
+
+    def on_result(result):
+        if result.success:
+            click.secho(f"  ✓ {result.source.name} → {result.target.name}", fg="green")
+        else:
+            click.secho(f"  ✗ {result.source.name}: {result.error}", fg="red")
+
+    watch_directory(
+        watch_dir=watch_dir,
+        config=config,
+        on_result=on_result,
+        poll_interval=interval,
+    )
+
+
 @main.command("init")
 @click.option("--output", "-o", type=click.Path(path_type=Path), default=None, help="Wo die Config gespeichert werden soll")
 def init_config(output: Path | None) -> None:

@@ -23,6 +23,8 @@ class ExtractedDoc:
     metadata: dict[str, Any] = field(default_factory=dict)
     source_path: Path = field(default_factory=lambda: Path("."))
     num_pages: int = 0
+    ocr_quality: str = "ok"       # "ok", "low", "empty"
+    ocr_quality_info: str = ""    # Beschreibung des Problems
 
 
 def _get_converter(config: Config) -> Any:
@@ -98,9 +100,34 @@ def extract_text(file_path: Path, config: Config) -> ExtractedDoc:
         elif hasattr(meta_obj, "__dict__"):
             metadata = {k: v for k, v in meta_obj.__dict__.items() if not k.startswith("_")}
 
+    # OCR-Qualitäts-Check
+    ocr_quality = "ok"
+    ocr_quality_info = ""
+
+    text_stripped = text.strip()
+    text_len = len(text_stripped)
+
+    if text_len == 0:
+        ocr_quality = "empty"
+        ocr_quality_info = "Kein Text extrahiert — Dokument leer oder OCR komplett fehlgeschlagen."
+        logger.warning("OCR-Qualität LEER: %s — kein Text extrahiert.", file_path.name)
+    elif text_len < 50:
+        ocr_quality = "low"
+        ocr_quality_info = f"Sehr wenig Text extrahiert ({text_len} Zeichen) — OCR möglicherweise fehlerhaft."
+        logger.warning("OCR-Qualität NIEDRIG: %s — nur %d Zeichen.", file_path.name, text_len)
+    else:
+        # Prüfe Anteil unleserlicher Zeichen (Ersetzungszeichen, Kästchen etc.)
+        garbage_chars = sum(1 for c in text_stripped if c in "\ufffd\x00\x01\x02\x03\x04\x05")
+        if text_len > 0 and (garbage_chars / text_len) > 0.1:
+            ocr_quality = "low"
+            ocr_quality_info = f"Hoher Anteil unleserlicher Zeichen ({garbage_chars}/{text_len}) — OCR-Qualität fraglich."
+            logger.warning("OCR-Qualität NIEDRIG: %s — %d/%d Garbage-Zeichen.", file_path.name, garbage_chars, text_len)
+
     return ExtractedDoc(
         text=text,
         metadata=metadata,
         source_path=file_path,
         num_pages=num_pages,
+        ocr_quality=ocr_quality,
+        ocr_quality_info=ocr_quality_info,
     )
