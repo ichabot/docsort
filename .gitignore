@@ -32,3 +32,4 @@ htmlcov/
 # DocSort output
 sorted/
 output/
+docsort.yaml
