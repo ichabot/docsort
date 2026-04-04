@@ -339,7 +339,7 @@ docsort web --port 8080
 docsort web --share
 ```
 
-Die Web-UI hat drei Tabs:
+Die Web-UI hat vier Tabs:
 
 1. **📁 Verarbeitung** — Dateien hochladen, Analysieren & Ausführen
    - Ergebnis-Tabelle (read-only) mit Status und OCR-Qualität
@@ -348,6 +348,17 @@ Die Web-UI hat drei Tabs:
    - Änderungen übernehmen → Tabelle aktualisiert sich
 2. **⚙️ Einstellungen** — LLM-Profil, Ausgabe, Ordnerstruktur, Dokumenttypen, Confidence-Schwelle
 3. **📝 System-Prompt** — Klassifizierungs-Prompt anpassen
+4. **ℹ️ Info** — Versionsinformationen, Pipeline-Übersicht und Hilfe
+
+#### Screenshots
+
+| Verarbeitung | Einstellungen |
+|:---:|:---:|
+| ![Verarbeitung](docs/screenshots/01_verarbeitung.png) | ![Einstellungen](docs/screenshots/02_einstellungen.png) |
+
+| System-Prompt | Info |
+|:---:|:---:|
+| ![Prompt](docs/screenshots/04_prompt.png) | ![Info](docs/screenshots/05_info.png) |
 
 ---
 

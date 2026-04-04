@@ -1,0 +1,8 @@
+active_profile: lm-studio
+output_dir: sorted
+mode: copy
+gpu: true
+ocr_batch_size: 32
+layout_batch_size: 32
+confidence_threshold: 0.7
+max_retries: 2
