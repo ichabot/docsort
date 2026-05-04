@@ -192,7 +192,6 @@ class Config:
     # GPU / Beschleunigung
     gpu: bool = True
     ocr_batch_size: int = 32
-    layout_batch_size: int = 32
 
     # Dateitypen & Dokumenttypen
     supported_extensions: list[str] = field(default_factory=lambda: list(DEFAULT_EXTENSIONS))
@@ -261,7 +260,6 @@ class Config:
             "mode": self.mode,
             "gpu": self.gpu,
             "ocr_batch_size": self.ocr_batch_size,
-            "layout_batch_size": self.layout_batch_size,
             "doc_types": self.doc_types if self.doc_types != DEFAULT_DOC_TYPES else None,
             "folder_template": self.folder_template if self.folder_template != DEFAULT_FOLDER_TEMPLATE else None,
             "system_prompt": self.system_prompt if self.system_prompt != DEFAULT_SYSTEM_PROMPT else None,
@@ -284,8 +282,6 @@ class Config:
             config.gpu = data["gpu"]
         if "ocr_batch_size" in data:
             config.ocr_batch_size = data["ocr_batch_size"]
-        if "layout_batch_size" in data:
-            config.layout_batch_size = data["layout_batch_size"]
         if "doc_types" in data and data["doc_types"]:
             config.doc_types = data["doc_types"]
         if "folder_template" in data and data["folder_template"]:

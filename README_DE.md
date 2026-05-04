@@ -11,7 +11,7 @@ DocSort liest eingescannte Dokumente (PDF, DOCX, XLSX, Bilder etc.) ein, extrahi
 ## ✨ Features
 
 - **Universelle Dokumentenformate** — PDF, DOCX, XLSX, PPTX, ODT, JPG, PNG, TIFF und mehr
-- **GPU-beschleunigte OCR** — Docling mit OnnxTR OCR-Engine auf NVIDIA GPUs
+- **Smarte Text-Extraktion** — PyMuPDF für digitale PDFs (<1s), GPU-beschleunigte OCR via Docling nur für gescannte Dokumente
 - **Multi-LLM Support** — LM Studio, Ollama, OpenAI, Anthropic Claude, Google Gemini
 - **Einheitliche Benennung** — `JJJJ-MM-TT_Dokumenttyp-Kurzinfo.ext`
 - **Flexible Ordnerstruktur** — konfigurierbares Template (`{doc_type}/{year}`, `{year}/{doc_type}` etc.)
@@ -56,6 +56,8 @@ Dieses Projekt wurde mit KI-Unterstützung entwickelt („Vibe Coding") und nutz
 | **LLM-Server** | — | LM Studio, Ollama (lokal) oder Cloud-API (OpenAI, Claude, Gemini) |
 | **NVIDIA GPU** | optional | Empfohlen: RTX 4070 Ti SUPER (12 GB VRAM) |
 | **CUDA** | 12.8 | Für GPU-Beschleunigung |
+
+> **Hinweis:** Digitale PDFs (mit Textebene) werden blitzschnell per PyMuPDF extrahiert — dafür wird keine GPU benötigt. GPU-Beschleunigung ist nur für gescannte Dokumente und Bilder relevant, die per Docling OCR verarbeitet werden.
 
 ### LLM einrichten
 
@@ -293,7 +295,7 @@ docsort process ./scans \
 | `--model` | Modellname (überschreibt Profil) | — |
 | `--api-key` | API-Key (überschreibt Profil) | — |
 | `--no-gpu` | GPU deaktivieren | GPU an |
-| `--batch-size` | OCR/Layout Batch-Größe | `32` |
+| `--batch-size` | OCR Batch-Größe | `32` |
 | `--config` | Pfad zur Config-Datei | auto |
 | `-v, --verbose` | Ausführliche Ausgabe | aus |
 
@@ -411,7 +413,7 @@ docsort/
 │   └── docsort/
 │       ├── __init__.py         # Package-Init + Version
 │       ├── config.py           # YAML-Config, LLM-Profile, Laden/Speichern
-│       ├── extractor.py        # Docling Text-Extraktion + OCR + Qualitäts-Check
+│       ├── extractor.py        # Text-Extraktion: PyMuPDF Fast-Path + Docling OCR Fallback + Qualitäts-Check
 │       ├── classifier.py       # Multi-LLM Klassifizierung (OpenAI + Anthropic)
 │       ├── organizer.py        # Dateien umbenennen + sortieren + Undo-Log
 │       ├── pipeline.py         # Orchestriert: extract → classify → organize
@@ -429,7 +431,7 @@ docsort/
 Eingabe-Datei
     │
     ▼
-[1. Extractor]  ─── Docling + OCR → Text + Metadaten
+[1. Extractor]  ─── PyMuPDF (digitale PDFs) oder Docling OCR (Scans/Bilder) → Text + Metadaten
     │
     ▼
 [2. Classifier] ─── LLM (wählbar) → Typ, Kurzinfo, Datum, Konfidenz
@@ -478,8 +480,9 @@ pytest --cov=docsort --cov-report=term-missing
 | Parameter | Wert |
 |---|---|
 | `ocr_batch_size` | `16` bis `32` |
-| `layout_batch_size` | `16` bis `32` |
 | CUDA Version | 12.8 |
+
+> **Hinweis:** GPU wird nur für gescannte Dokumente und Bilder benötigt (Docling OCR). Digitale PDFs mit Textebene werden per PyMuPDF extrahiert und brauchen weder GPU noch OCR.
 
 GPU deaktivieren:
 
@@ -487,7 +490,7 @@ GPU deaktivieren:
 docsort process ./scans --no-gpu
 ```
 
-DocSort erkennt automatisch, ob CUDA verfügbar ist und fällt bei Bedarf auf CPU zurück.
+DocSort erkennt automatisch, ob CUDA verfügbar ist und fällt bei Bedarf auf CPU zurück. Für digitale PDFs wird keine GPU benötigt — PyMuPDF extrahiert den Text direkt aus der Textebene.
 
 ---
 

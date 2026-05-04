@@ -38,10 +38,9 @@ output_dir: ./sorted
 # Modus: copy oder move
 mode: copy
 
-# GPU-Beschleunigung
+# GPU-Beschleunigung (nur für OCR gescannter Dokumente)
 gpu: true
 ocr_batch_size: 32
-layout_batch_size: 32
 
 # Ordnerstruktur-Template
 # Variablen: {doc_type}, {absender}, {year}, {month}, {filename}

@@ -24,6 +24,7 @@ classifiers = [
 # Pinned dependencies — tested and working as of 2026-04-03
 dependencies = [
     "docling>=2.84,<3",
+    "pymupdf>=1.25,<2",
     "openai>=2.30,<3",
     "gradio>=6.11,<7",
     "click>=8.3,<9",

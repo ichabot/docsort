@@ -11,7 +11,7 @@ DocSort reads scanned documents (PDF, DOCX, XLSX, images, etc.), extracts text v
 ## ✨ Features
 
 - **Universal document formats** — PDF, DOCX, XLSX, PPTX, ODT, JPG, PNG, TIFF and more
-- **GPU-accelerated OCR** — Docling with OnnxTR OCR engine on NVIDIA GPUs
+- **Smart text extraction** — PyMuPDF for digital PDFs (<1s), GPU-accelerated OCR via Docling only for scanned documents
 - **Multi-LLM support** — LM Studio, Ollama, OpenAI, Anthropic Claude, Google Gemini
 - **Sender detection** — Automatically identifies the document sender/issuer
 - **Consistent naming** — `YYYY-MM-DD_Description.ext`
@@ -57,6 +57,7 @@ This project was developed with AI assistance ("vibe coding") and uses third-par
 | **LLM server** | — | LM Studio, Ollama (local) or cloud API (OpenAI, Claude, Gemini) |
 | **NVIDIA GPU** | optional | Recommended: RTX 4070 Ti SUPER (12 GB VRAM) |
 | **CUDA** | 12.8 | For GPU acceleration |
+| **PyMuPDF** | latest | Fast text extraction for digital PDFs (installed automatically) |
 
 ### Setting up an LLM
 
@@ -293,7 +294,7 @@ docsort process ./scans \
 | `--model` | Model name (overrides profile) | — |
 | `--api-key` | API key (overrides profile) | — |
 | `--no-gpu` | Disable GPU | GPU on |
-| `--batch-size` | OCR/layout batch size | `32` |
+| `--batch-size` | OCR batch size | `32` |
 | `--config` | Path to config file | auto |
 | `-v, --verbose` | Verbose output | off |
 
@@ -432,7 +433,7 @@ docsort/
 │   └── docsort/
 │       ├── __init__.py         # Package init + version
 │       ├── config.py           # YAML config, LLM profiles, load/save
-│       ├── extractor.py        # Docling text extraction + OCR + quality check
+│       ├── extractor.py        # Text extraction: PyMuPDF fast-path + Docling OCR fallback + quality check
 │       ├── classifier.py       # Multi-LLM classification (OpenAI + Anthropic)
 │       ├── organizer.py        # Rename + sort files + undo log
 │       ├── pipeline.py         # Orchestrates: extract → classify → organize
@@ -450,7 +451,7 @@ docsort/
 Input File
     │
     ▼
-[1. Extractor]  ─── Docling + OCR → Text + Metadata
+[1. Extractor]  ─── PyMuPDF (digital PDF) or Docling OCR (scans/images) → Text + Metadata
     │
     ▼
 [2. Classifier] ─── LLM (selectable) → Type, Sender, Info, Date, Confidence
@@ -494,12 +495,13 @@ pytest --cov=docsort --cov-report=term-missing
 
 ## ⚡ GPU Configuration
 
+> **Note:** GPU is only needed for scanned documents and images. Digital PDFs with a text layer are processed by PyMuPDF on CPU in under 1 second — no GPU required.
+
 ### Recommended Settings (RTX 4070 Ti SUPER, 12 GB VRAM)
 
 | Parameter | Value |
 |---|---|
 | `ocr_batch_size` | `16` to `32` |
-| `layout_batch_size` | `16` to `32` |
 | CUDA Version | 12.8 |
 
 Disable GPU:

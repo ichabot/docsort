@@ -1,4 +1,4 @@
-"""Text-Extraktion aus Dokumenten mittels Docling und OCR."""
+"""Text-Extraktion aus Dokumenten — schneller Pfad via PyMuPDF, OCR-Fallback via Docling."""
 
 from __future__ import annotations
 
@@ -14,6 +14,9 @@ logger = logging.getLogger(__name__)
 # Globaler Cache für den DocumentConverter (Modelle nur einmal laden)
 _converter_cache: dict[str, Any] = {}
 
+# Minimale Textmenge ab der ein PDF als "digital" gilt (hat brauchbaren Text-Layer)
+_MIN_DIGITAL_TEXT_LENGTH = 50
+
 
 @dataclass
 class ExtractedDoc:
@@ -25,11 +28,34 @@ class ExtractedDoc:
     num_pages: int = 0
     ocr_quality: str = "ok"       # "ok", "low", "empty"
     ocr_quality_info: str = ""    # Beschreibung des Problems
+    extraction_method: str = ""   # "pymupdf", "docling-ocr"
 
 
-def _get_converter(config: Config) -> Any:
-    """Erstellt oder gibt den gecachten DocumentConverter zurück."""
-    cache_key = f"gpu={config.gpu}_ocr={config.ocr_batch_size}_layout={config.layout_batch_size}"
+def _extract_pdf_fast(file_path: Path) -> tuple[str, int]:
+    """Extrahiert Text aus PDF via PyMuPDF (schnell, kein OCR).
+
+    Args:
+        file_path: Pfad zur PDF-Datei.
+
+    Returns:
+        Tuple (text, num_pages). Text ist leer wenn kein Text-Layer vorhanden.
+    """
+    import fitz  # PyMuPDF
+
+    doc = fitz.open(str(file_path))
+    num_pages = len(doc)
+    pages_text: list[str] = []
+
+    for page in doc:
+        pages_text.append(page.get_text())
+
+    doc.close()
+    return "\n".join(pages_text), num_pages
+
+
+def _get_ocr_converter(config: Config) -> Any:
+    """Erstellt oder gibt den gecachten Docling DocumentConverter zurück (nur OCR, kein Layout)."""
+    cache_key = f"gpu={config.gpu}_ocr={config.ocr_batch_size}"
 
     if cache_key in _converter_cache:
         return _converter_cache[cache_key]
@@ -40,6 +66,7 @@ def _get_converter(config: Config) -> Any:
 
     pipeline_options = PdfPipelineOptions()
     pipeline_options.do_ocr = True
+    pipeline_options.do_table_structure = False
     pipeline_options.allow_external_plugins = True
 
     # GPU-Beschleunigung
@@ -54,7 +81,7 @@ def _get_converter(config: Config) -> Any:
                 device=AcceleratorDevice.CUDA,
                 num_threads=4,
             )
-            logger.info("GPU-Beschleunigung (CUDA) aktiviert.")
+            logger.info("GPU-Beschleunigung (CUDA) für OCR aktiviert.")
         except Exception:
             logger.warning("CUDA nicht verfügbar — Fallback auf CPU.")
 
@@ -76,17 +103,17 @@ def _get_converter(config: Config) -> Any:
     return converter
 
 
-def extract_text(file_path: Path, config: Config) -> ExtractedDoc:
-    """Extrahiert Text aus einer Datei mittels Docling.
+def _extract_with_docling(file_path: Path, config: Config) -> tuple[str, int, dict[str, Any]]:
+    """Extrahiert Text via Docling (OCR-Pfad für gescannte Dokumente).
 
     Args:
         file_path: Pfad zur Quelldatei.
         config: DocSort-Konfiguration.
 
     Returns:
-        ExtractedDoc mit extrahiertem Text und Metadaten.
+        Tuple (text, num_pages, metadata).
     """
-    converter = _get_converter(config)
+    converter = _get_ocr_converter(config)
     result = converter.convert(str(file_path))
 
     text = result.document.export_to_markdown()
@@ -100,28 +127,95 @@ def extract_text(file_path: Path, config: Config) -> ExtractedDoc:
         elif hasattr(meta_obj, "__dict__"):
             metadata = {k: v for k, v in meta_obj.__dict__.items() if not k.startswith("_")}
 
-    # OCR-Qualitäts-Check
-    ocr_quality = "ok"
-    ocr_quality_info = ""
+    return text, num_pages, metadata
 
+
+def _assess_quality(text: str, file_path: Path) -> tuple[str, str]:
+    """Prüft die Qualität des extrahierten Texts.
+
+    Returns:
+        Tuple (quality, quality_info) — quality ist "ok", "low" oder "empty".
+    """
     text_stripped = text.strip()
     text_len = len(text_stripped)
 
     if text_len == 0:
-        ocr_quality = "empty"
-        ocr_quality_info = "Kein Text extrahiert — Dokument leer oder OCR komplett fehlgeschlagen."
         logger.warning("OCR-Qualität LEER: %s — kein Text extrahiert.", file_path.name)
-    elif text_len < 50:
-        ocr_quality = "low"
-        ocr_quality_info = f"Sehr wenig Text extrahiert ({text_len} Zeichen) — OCR möglicherweise fehlerhaft."
+        return "empty", "Kein Text extrahiert — Dokument leer oder OCR komplett fehlgeschlagen."
+
+    if text_len < _MIN_DIGITAL_TEXT_LENGTH:
         logger.warning("OCR-Qualität NIEDRIG: %s — nur %d Zeichen.", file_path.name, text_len)
+        return "low", f"Sehr wenig Text extrahiert ({text_len} Zeichen) — OCR möglicherweise fehlerhaft."
+
+    # Prüfe Anteil unleserlicher Zeichen (Ersetzungszeichen, Kästchen etc.)
+    garbage_chars = sum(1 for c in text_stripped if c in "\ufffd\x00\x01\x02\x03\x04\x05")
+    if text_len > 0 and (garbage_chars / text_len) > 0.1:
+        logger.warning("OCR-Qualität NIEDRIG: %s — %d/%d Garbage-Zeichen.", file_path.name, garbage_chars, text_len)
+        return "low", f"Hoher Anteil unleserlicher Zeichen ({garbage_chars}/{text_len}) — OCR-Qualität fraglich."
+
+    return "ok", ""
+
+
+def extract_text(file_path: Path, config: Config) -> ExtractedDoc:
+    """Extrahiert Text aus einer Datei — schneller Pfad für digitale PDFs, OCR für Scans.
+
+    Strategie:
+        1. PDF mit Text-Layer → PyMuPDF (schnell, <1s)
+        2. Gescanntes PDF / Bilder → Docling OCR (langsamer, GPU-beschleunigt)
+        3. Andere Formate (DOCX, XLSX etc.) → Docling
+
+    Args:
+        file_path: Pfad zur Quelldatei.
+        config: DocSort-Konfiguration.
+
+    Returns:
+        ExtractedDoc mit extrahiertem Text und Metadaten.
+    """
+    suffix = file_path.suffix.lower()
+    extraction_method = ""
+    text = ""
+    num_pages = 0
+    metadata: dict[str, Any] = {}
+
+    # Schneller Pfad: PDF mit Text-Layer via PyMuPDF
+    if suffix == ".pdf":
+        try:
+            text, num_pages = _extract_pdf_fast(file_path)
+
+            if len(text.strip()) >= _MIN_DIGITAL_TEXT_LENGTH:
+                extraction_method = "pymupdf"
+                logger.info(
+                    "PDF hat Text-Layer — PyMuPDF genutzt (%d Zeichen, %d Seiten).",
+                    len(text.strip()), num_pages,
+                )
+            else:
+                # Kein oder zu wenig Text → gescanntes PDF → OCR
+                logger.info(
+                    "PDF hat keinen brauchbaren Text-Layer (%d Zeichen) — starte OCR.",
+                    len(text.strip()),
+                )
+                text, num_pages, metadata = _extract_with_docling(file_path, config)
+                extraction_method = "docling-ocr"
+
+        except Exception as exc:
+            logger.warning("PyMuPDF fehlgeschlagen (%s) — Fallback auf Docling.", exc)
+            text, num_pages, metadata = _extract_with_docling(file_path, config)
+            extraction_method = "docling-ocr"
+
+    # Bilder → immer OCR
+    elif suffix in (".jpg", ".jpeg", ".png", ".tiff", ".tif", ".bmp", ".webp"):
+        logger.info("Bild-Datei erkannt — starte OCR: %s", file_path.name)
+        text, num_pages, metadata = _extract_with_docling(file_path, config)
+        extraction_method = "docling-ocr"
+
+    # Andere Formate (DOCX, XLSX, etc.) → Docling ohne OCR
     else:
-        # Prüfe Anteil unleserlicher Zeichen (Ersetzungszeichen, Kästchen etc.)
-        garbage_chars = sum(1 for c in text_stripped if c in "\ufffd\x00\x01\x02\x03\x04\x05")
-        if text_len > 0 and (garbage_chars / text_len) > 0.1:
-            ocr_quality = "low"
-            ocr_quality_info = f"Hoher Anteil unleserlicher Zeichen ({garbage_chars}/{text_len}) — OCR-Qualität fraglich."
-            logger.warning("OCR-Qualität NIEDRIG: %s — %d/%d Garbage-Zeichen.", file_path.name, garbage_chars, text_len)
+        logger.info("Nicht-PDF/Bild-Format — nutze Docling: %s", file_path.name)
+        text, num_pages, metadata = _extract_with_docling(file_path, config)
+        extraction_method = "docling"
+
+    # Qualitäts-Check
+    ocr_quality, ocr_quality_info = _assess_quality(text, file_path)
 
     return ExtractedDoc(
         text=text,
@@ -130,4 +224,5 @@ def extract_text(file_path: Path, config: Config) -> ExtractedDoc:
         num_pages=num_pages,
         ocr_quality=ocr_quality,
         ocr_quality_info=ocr_quality_info,
+        extraction_method=extraction_method,
     )

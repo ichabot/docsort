@@ -52,7 +52,7 @@ def main() -> None:
 @click.option("--model", default=None, help="LLM Modellname (überschreibt Profil)")
 @click.option("--api-key", default=None, help="API-Key (überschreibt Profil)")
 @click.option("--no-gpu", is_flag=True, default=False, help="GPU deaktivieren")
-@click.option("--batch-size", type=int, default=None, help="OCR/Layout Batch-Größe")
+@click.option("--batch-size", type=int, default=None, help="OCR Batch-Größe")
 @click.option("--config", "config_path", type=click.Path(path_type=Path), default=None, help="Pfad zur Config-Datei")
 @click.option("-v", "--verbose", is_flag=True, help="Ausführliche Ausgabe")
 def process(
@@ -84,7 +84,6 @@ def process(
         config.gpu = False
     if batch_size:
         config.ocr_batch_size = batch_size
-        config.layout_batch_size = batch_size
 
     # Profil anwenden
     if profile:

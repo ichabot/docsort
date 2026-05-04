@@ -47,7 +47,6 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
             dry_run=dry_run,
             gpu=config.gpu,
             ocr_batch_size=config.ocr_batch_size,
-            layout_batch_size=config.layout_batch_size,
             folder_template=folder_template,
             system_prompt=system_prompt,
             confidence_threshold=confidence_threshold,
