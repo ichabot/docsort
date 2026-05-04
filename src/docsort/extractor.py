@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -62,8 +64,59 @@ def _extract_pdf_fast(file_path: Path, max_pages: int = 0) -> tuple[str, int]:
     return "\n".join(pages_text), num_pages
 
 
-def _get_ocr_converter(config: Config) -> Any:
-    """Erstellt oder gibt den gecachten Docling DocumentConverter zurück (nur OCR, kein Layout)."""
+def _trim_pdf_to_pages(file_path: Path, max_pages: int) -> tuple[Path | None, int]:
+    """Trimmt ein PDF auf die ersten N Seiten in eine temporäre Datei.
+
+    Kompatibel mit Windows (schließt alle Handles vor Rückgabe).
+
+    Args:
+        file_path: Quell-PDF.
+        max_pages: Maximale Seitenzahl.
+
+    Returns:
+        Tuple (temp_path, total_pages). temp_path ist None wenn kein Trim nötig.
+    """
+    import fitz
+
+    src = fitz.open(str(file_path))
+    total_pages = len(src)
+
+    if total_pages <= max_pages:
+        src.close()
+        return None, total_pages
+
+    # Temp-Datei erzeugen — Handle sofort schließen (Windows-Kompatibilität)
+    fd, tmp_path = tempfile.mkstemp(suffix=".pdf")
+    os.close(fd)
+
+    try:
+        dst = fitz.open()
+        dst.insert_pdf(src, from_page=0, to_page=max_pages - 1)
+        dst.save(tmp_path)
+        dst.close()
+        src.close()
+
+        logger.info(
+            "OCR-Seitenlimit: verarbeite %d von %d Seiten.",
+            max_pages, total_pages,
+        )
+        return Path(tmp_path), total_pages
+
+    except Exception:
+        src.close()
+        # Temp-Datei aufräumen bei Fehler
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+def _get_converter(config: Config) -> Any:
+    """Erstellt oder gibt den gecachten Docling DocumentConverter zurück.
+
+    Konfiguriert für PDF und Bild-Formate mit externen Plugins (OnnxTR etc.).
+    """
     cache_key = f"gpu={config.gpu}_ocr={config.ocr_batch_size}"
 
     if cache_key in _converter_cache:
@@ -73,10 +126,26 @@ def _get_ocr_converter(config: Config) -> Any:
     from docling.datamodel.pipeline_options import PdfPipelineOptions
     from docling.document_converter import DocumentConverter, PdfFormatOption
 
-    pipeline_options = PdfPipelineOptions()
-    pipeline_options.do_ocr = True
-    pipeline_options.do_table_structure = False
-    pipeline_options.allow_external_plugins = True
+    # --- PDF Pipeline ---
+    pdf_options = PdfPipelineOptions()
+    pdf_options.do_ocr = True
+    pdf_options.do_table_structure = False
+    pdf_options.allow_external_plugins = True
+
+    # --- Image Pipeline ---
+    # Docling nutzt ImagePipelineOptions für Bilder — braucht eigenes allow_external_plugins
+    image_format_option = None
+    try:
+        from docling.datamodel.pipeline_options import ImagePipelineOptions
+        from docling.document_converter import ImageFormatOption
+
+        img_options = ImagePipelineOptions()
+        img_options.do_ocr = True
+        img_options.do_table_structure = False
+        img_options.allow_external_plugins = True
+        image_format_option = ImageFormatOption(pipeline_options=img_options)
+    except ImportError:
+        logger.debug("ImagePipelineOptions nicht verfügbar — Bilder nutzen PDF-Pipeline-Defaults.")
 
     # GPU-Beschleunigung
     if config.gpu:
@@ -86,10 +155,13 @@ def _get_ocr_converter(config: Config) -> Any:
                 AcceleratorOptions,
             )
 
-            pipeline_options.accelerator_options = AcceleratorOptions(
+            accel = AcceleratorOptions(
                 device=AcceleratorDevice.CUDA,
                 num_threads=4,
             )
+            pdf_options.accelerator_options = accel
+            if image_format_option and hasattr(image_format_option.pipeline_options, "accelerator_options"):
+                image_format_option.pipeline_options.accelerator_options = accel
             logger.info("GPU-Beschleunigung (CUDA) für OCR aktiviert.")
         except Exception:
             logger.warning("CUDA nicht verfügbar — Fallback auf CPU.")
@@ -98,16 +170,22 @@ def _get_ocr_converter(config: Config) -> Any:
     try:
         from docling_ocr_onnxtr import OnnxtrOcrOptions
 
-        pipeline_options.ocr_options = OnnxtrOcrOptions()
+        ocr_opts = OnnxtrOcrOptions()
+        pdf_options.ocr_options = ocr_opts
+        if image_format_option and hasattr(image_format_option.pipeline_options, "ocr_options"):
+            image_format_option.pipeline_options.ocr_options = ocr_opts
         logger.info("OnnxTR OCR-Engine aktiviert.")
     except ImportError:
         logger.debug("docling-ocr-onnxtr nicht installiert — Standard-OCR wird genutzt.")
 
-    converter = DocumentConverter(
-        format_options={
-            InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options),
-        }
-    )
+    # Converter mit beiden Format-Optionen
+    format_options: dict[InputFormat, Any] = {
+        InputFormat.PDF: PdfFormatOption(pipeline_options=pdf_options),
+    }
+    if image_format_option:
+        format_options[InputFormat.IMAGE] = image_format_option
+
+    converter = DocumentConverter(format_options=format_options)
     _converter_cache[cache_key] = converter
     return converter
 
@@ -124,38 +202,20 @@ def _extract_with_docling(file_path: Path, config: Config) -> tuple[str, int, di
     Returns:
         Tuple (text, num_pages, metadata).
     """
-    import tempfile
-
     actual_file = file_path
     total_pages = 0
-    truncated = False
+    tmp_path: Path | None = None
 
     # PDF auf max_pages begrenzen um OCR-Zeit zu sparen
     if config.max_pages > 0 and file_path.suffix.lower() == ".pdf":
         try:
-            import fitz
-
-            src = fitz.open(str(file_path))
-            total_pages = len(src)
-
-            if total_pages > config.max_pages:
-                truncated = True
-                tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
-                dst = fitz.open()
-                dst.insert_pdf(src, from_page=0, to_page=config.max_pages - 1)
-                dst.save(tmp.name)
-                dst.close()
-                actual_file = Path(tmp.name)
-                logger.info(
-                    "OCR-Seitenlimit: verarbeite %d von %d Seiten.",
-                    config.max_pages, total_pages,
-                )
-
-            src.close()
+            tmp_path, total_pages = _trim_pdf_to_pages(file_path, config.max_pages)
+            if tmp_path is not None:
+                actual_file = tmp_path
         except Exception as exc:
             logger.warning("Seitenlimit-Trim fehlgeschlagen (%s) — verarbeite komplettes PDF.", exc)
 
-    converter = _get_ocr_converter(config)
+    converter = _get_converter(config)
     result = converter.convert(str(actual_file))
 
     text = result.document.export_to_markdown()
@@ -170,9 +230,9 @@ def _extract_with_docling(file_path: Path, config: Config) -> tuple[str, int, di
             metadata = {k: v for k, v in meta_obj.__dict__.items() if not k.startswith("_")}
 
     # Temp-Datei aufräumen
-    if truncated and actual_file != file_path:
+    if tmp_path is not None:
         try:
-            actual_file.unlink()
+            tmp_path.unlink()
         except OSError:
             pass
 
