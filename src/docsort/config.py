@@ -39,7 +39,6 @@ DEFAULT_DOC_TYPES: list[str] = [
 
 DEFAULT_EXTENSIONS: list[str] = [
     ".pdf", ".docx", ".xlsx", ".pptx",
-    ".odt", ".ods", ".odp",
     ".jpg", ".jpeg", ".png", ".tiff", ".tif",
     ".bmp", ".webp", ".html", ".htm",
 ]
