@@ -280,3 +280,36 @@ def list_profiles() -> None:
         key_display = "***" if profile.api_key and profile.api_key not in ("lm-studio", "ollama") else profile.api_key
         click.echo(f"    API-Key:  {key_display}")
         click.echo()
+
+
+@main.group("cache")
+def cache_group() -> None:
+    """Extraktions-Cache verwalten."""
+
+
+@cache_group.command("clear")
+@click.option("--config", "config_path", type=click.Path(path_type=Path), default=None, help="Pfad zur Config-Datei")
+def cache_clear(config_path: Path | None) -> None:
+    """Cache komplett leeren."""
+    import shutil
+
+    config = load_config(config_path)
+
+    if not config.cache_dir:
+        click.secho("Cache ist deaktiviert (cache_dir leer).", fg="yellow")
+        return
+
+    cache_path = Path(config.cache_dir)
+    if not cache_path.exists():
+        click.secho(f"Cache-Verzeichnis existiert nicht: {cache_path}", fg="yellow")
+        return
+
+    # Dateien zählen
+    count = sum(1 for _ in cache_path.rglob("*.json"))
+
+    if count == 0:
+        click.secho("Cache ist leer.", fg="yellow")
+        return
+
+    shutil.rmtree(cache_path)
+    click.secho(f"✓ Cache gelöscht: {count} Einträge entfernt ({cache_path})", fg="green")
