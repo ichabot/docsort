@@ -407,7 +407,7 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
                 result_table = gr.Dataframe(
                     headers=["Datei", "Typ", "Absender", "Kurzinfo", "Datum", "Konf.", "Status", "Zielpfad", "Zieldatei"],
                     datatype=["str"] * 9,
-                    col_count=(9, "fixed"),
+                    column_count=(9, "fixed"),
                     interactive=False,
                 )
 
