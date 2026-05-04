@@ -16,6 +16,9 @@ DocSort reads scanned documents (PDF, DOCX, XLSX, images, etc.), extracts text v
 - **Sender detection** — Automatically identifies the document sender/issuer
 - **Consistent naming** — `YYYY-MM-DD_Description.ext`
 - **Flexible folder structure** — Configurable template (`{doc_type}/{year}/{absender}/{filename}` etc.)
+- **Configurable filename template** — `{doc_date}_{short_info}` (default), customizable with variables
+- **Parallel processing** — LLM calls run in parallel with configurable worker count (default: 4)
+- **Text extraction cache** — SHA-256 hash-based cache in `.docsort_cache/`, skips re-extraction on repeated runs
 - **YAML configuration** — All settings persisted in `docsort.yaml`
 - **LLM profiles** — Quickly switch between providers
 - **Customizable system prompt** — Tailor classification to your needs
@@ -161,6 +164,15 @@ mode: copy
 # Folder structure template
 folder_template: "{doc_type}/{year}/{absender}/{filename}"
 
+# Filename template
+filename_template: "{doc_date}_{short_info}"
+
+# Parallel processing
+max_workers: 4
+
+# Extraction cache directory
+cache_dir: .docsort_cache
+
 # Quality
 confidence_threshold: 0.7
 max_retries: 2
@@ -217,6 +229,35 @@ folder_template: "{year}/{doc_type}/{absender}/{filename}"
 # Flat (no subfolders)
 folder_template: "{filename}"
 # → sorted/2026-01-15_Strom-Abrechnung.pdf
+```
+
+### Filename Template
+
+The filename template controls how sorted files are named. Available variables:
+
+| Variable | Description | Example |
+|---|---|---|
+| `{doc_date}` | Document date (YYYY-MM-DD) | `2026-03-15` |
+| `{short_info}` | Short description | `Strom-Abrechnung` |
+| `{absender}` | Sender/issuer | `Stadtwerke-Muenchen` |
+| `{doc_type}` | Document type | `Rechnung` |
+| `{year}` | Year from document date | `2026` |
+| `{month}` | Month from document date | `03` |
+
+Examples:
+
+```yaml
+# Default
+filename_template: "{doc_date}_{short_info}"
+# → 2026-03-15_Strom-Abrechnung.pdf
+
+# With sender in filename
+filename_template: "{doc_date}_{absender}_{short_info}"
+# → 2026-03-15_Stadtwerke-Muenchen_Strom-Abrechnung.pdf
+
+# Type prefix
+filename_template: "{doc_type}_{doc_date}_{short_info}"
+# → Rechnung_2026-03-15_Strom-Abrechnung.pdf
 ```
 
 ### Customizing the System Prompt
@@ -295,6 +336,9 @@ docsort process ./scans \
 | `--api-key` | API key (overrides profile) | — |
 | `--no-gpu` | Disable GPU | GPU on |
 | `--batch-size` | OCR batch size | `32` |
+| `-w, --workers` | Number of parallel workers | from config |
+| `--no-cache` | Disable text extraction cache | off |
+| `--max-pages` | Max pages per document (0 = all) | `5` |
 | `--config` | Path to config file | auto |
 | `-v, --verbose` | Verbose output | off |
 
@@ -325,6 +369,9 @@ docsort profiles
 # Undo last operations
 docsort undo           # all
 docsort undo -n 5      # last 5
+
+# Clear extraction cache
+docsort cache clear
 ```
 
 ### Web UI — Graphical Interface
@@ -343,10 +390,12 @@ docsort web --share
 The Web UI has four tabs:
 
 1. **📁 Processing** — Upload files, analyze & execute
-   - Results table (read-only) with status and OCR quality
+   - Results table with search bar, per-column filters, and sortable columns (click headers)
+   - Traffic light confidence status: 🟢 ≥85%, 🟡 50–84%, 🔴 <50%
    - **Side panel**: Click a row → PDF/image preview + edit fields
    - Correct document type, sender, description and date
    - Apply changes → table updates
+   - **Undo button** (↩️ Rückgängig) — revert the last operation directly from the UI
 2. **⚙️ Settings** — LLM profile, output, folder structure, document types, confidence threshold
 3. **📝 System Prompt** — Customize the classification prompt
 4. **ℹ️ Info** — Version info, pipeline overview, and help
@@ -451,14 +500,19 @@ docsort/
 Input File
     │
     ▼
-[1. Extractor]  ─── PyMuPDF (digital PDF) or Docling OCR (scans/images) → Text + Metadata
+[1. Cache Check] ─── SHA-256 hash lookup in .docsort_cache/
+    │                 ✓ Hit → skip extraction, use cached text
+    │                 ✗ Miss → continue to extraction
+    ▼
+[2. Extractor]  ─── PyMuPDF (digital PDF) or Docling OCR (scans/images) → Text + Metadata
+    │                 💾 Store result in cache
     │
     ▼
-[2. Classifier] ─── LLM (selectable) → Type, Sender, Info, Date, Confidence
+[3. Classifier] ─── LLM (selectable, parallel workers) → Type, Sender, Info, Date, Confidence
     │                 ↻ Retry on error
     │                 ⚠ Warning on low confidence
     ▼
-[3. Organizer]  ─── Template → Target path → Copy/Move
+[4. Organizer]  ─── Template → Target path → Copy/Move (sequential)
     │                 📝 Write undo log
     ▼
 Sorted file in target folder
@@ -502,6 +556,7 @@ pytest --cov=docsort --cov-report=term-missing
 | Parameter | Value |
 |---|---|
 | `ocr_batch_size` | `16` to `32` |
+| `max_workers` | `4` (parallel LLM calls) |
 | CUDA Version | 12.8 |
 
 Disable GPU:
@@ -511,6 +566,22 @@ docsort process ./scans --no-gpu
 ```
 
 DocSort automatically detects whether CUDA is available and falls back to CPU if needed.
+
+### Parallel Processing
+
+LLM classification calls run in parallel to speed up batch processing. File organization remains sequential to avoid conflicts.
+
+```yaml
+# In docsort.yaml
+max_workers: 4    # Number of parallel LLM calls (default: 4)
+```
+
+```bash
+# Override via CLI
+docsort process ./scans --workers 8
+```
+
+> **Tip:** Set `max_workers` to match your LLM server's concurrency capacity. For cloud APIs (OpenAI, Claude, Gemini), higher values (8–16) work well. For local LLMs, 2–4 is usually optimal.
 
 ---
 

@@ -28,6 +28,9 @@ DocSort liest eingescannte Dokumente (PDF, DOCX, XLSX, Bilder etc.) ein, extrahi
 - **Watchfolder** — Verzeichnis überwachen und neue Dateien automatisch verarbeiten
 - **Dokument-Vorschau** — PDF/Bild-Preview direkt in der Web-UI
 - **Fehlertoleranz** — Eine fehlerhafte Datei stoppt nicht den Rest
+- **Parallelverarbeitung** — LLM-Aufrufe parallel ausführen (konfigurierbare Worker-Anzahl)
+- **Text-Extraktions-Cache** — SHA-256-basierter Cache, überspringt wiederholte Extraktion
+- **Konfigurierbares Dateinamen-Template** — Dateinamen-Format per Template steuern
 
 ---
 
@@ -161,6 +164,15 @@ mode: copy
 # Ordnerstruktur-Template
 folder_template: "{doc_type}/{year}/{filename}"
 
+# Dateinamen-Template
+filename_template: "{doc_date}_{short_info}"
+
+# Parallelverarbeitung
+max_workers: 4
+
+# Extraktions-Cache
+cache_dir: .docsort_cache
+
 # Qualität
 confidence_threshold: 0.7
 max_retries: 2
@@ -217,6 +229,37 @@ folder_template: "{year}/{doc_type}/{absender}/{filename}"
 # Flach (keine Unterordner)
 folder_template: "{filename}"
 # → sorted/2026-01-15_Strom-Abrechnung.pdf
+```
+
+### Dateinamen-Template
+
+Das `filename_template` bestimmt das Format der generierten Dateinamen. Standard: `{doc_date}_{short_info}`.
+
+Verfügbare Variablen:
+
+| Variable | Beschreibung | Beispiel |
+|---|---|---|
+| `{doc_date}` | Dokumentdatum (JJJJ-MM-TT) | `2026-03-15` |
+| `{short_info}` | Kurzinfo | `Strom-Abrechnung` |
+| `{absender}` | Absender/Aussteller | `Stadtwerke-Muenchen` |
+| `{doc_type}` | Dokumenttyp | `Rechnung` |
+| `{year}` | Jahr aus Dokumentdatum | `2026` |
+| `{month}` | Monat aus Dokumentdatum | `03` |
+
+Beispiele:
+
+```yaml
+# Standard
+filename_template: "{doc_date}_{short_info}"
+# → 2026-03-15_Strom-Abrechnung.pdf
+
+# Mit Absender
+filename_template: "{doc_date}_{absender}_{short_info}"
+# → 2026-03-15_Stadtwerke-Muenchen_Strom-Abrechnung.pdf
+
+# Mit Dokumenttyp
+filename_template: "{doc_date}_{doc_type}_{short_info}"
+# → 2026-03-15_Rechnung_Strom-Abrechnung.pdf
 ```
 
 ### System-Prompt anpassen
@@ -298,6 +341,9 @@ docsort process ./scans \
 | `--batch-size` | OCR Batch-Größe | `32` |
 | `--config` | Pfad zur Config-Datei | auto |
 | `-v, --verbose` | Ausführliche Ausgabe | aus |
+| `-w, --workers` | Anzahl paralleler Worker | aus Config |
+| `--no-cache` | Extraktions-Cache deaktivieren | aus |
+| `--max-pages` | Max. Seiten pro Dokument (0=alle) | `5` |
 
 #### Watchfolder — automatische Verarbeitung
 
@@ -326,6 +372,9 @@ docsort profiles
 # Letzte Operationen rückgängig machen
 docsort undo           # alle
 docsort undo -n 5      # letzte 5
+
+# Extraktions-Cache leeren
+docsort cache clear
 ```
 
 ### Web-UI — Grafische Oberfläche
@@ -344,10 +393,13 @@ docsort web --share
 Die Web-UI hat vier Tabs:
 
 1. **📁 Verarbeitung** — Dateien hochladen, Analysieren & Ausführen
-   - Ergebnis-Tabelle (read-only) mit Status und OCR-Qualität
+   - Ergebnis-Tabelle (read-only) mit Status und OCR-Qualität inkl. Ampel-Status: 🟢 ≥85 %, 🟡 50–84 %, 🔴 <50 %
+   - Suchfeld + Filter pro Spalte in der Ergebnis-Tabelle
+   - Sortierung per Klick auf Spaltenüberschrift
    - **Seitenpanel**: Zeile anklicken → PDF/Bild-Vorschau + Edit-Felder
    - Dokumenttyp, Kurzinfo und Datum direkt korrigieren
    - Änderungen übernehmen → Tabelle aktualisiert sich
+   - ↩️ **Undo-Button** — letzte Aktion direkt in der Web-UI rückgängig machen
 2. **⚙️ Einstellungen** — LLM-Profil, Ausgabe, Ordnerstruktur, Dokumenttypen, Confidence-Schwelle
 3. **📝 System-Prompt** — Klassifizierungs-Prompt anpassen
 4. **ℹ️ Info** — Versionsinformationen, Pipeline-Übersicht und Hilfe
@@ -431,14 +483,18 @@ docsort/
 Eingabe-Datei
     │
     ▼
-[1. Extractor]  ─── PyMuPDF (digitale PDFs) oder Docling OCR (Scans/Bilder) → Text + Metadaten
+[1. Cache-Check] ── SHA-256 Hash → Treffer? → Cached Text + Metadaten zurückgeben
+    │                 ✗ Cache-Miss
+    ▼
+[2. Extractor]  ─── PyMuPDF (digitale PDFs) oder Docling OCR (Scans/Bilder) → Text + Metadaten
+    │                 💾 Ergebnis in .docsort_cache/ speichern
     │
     ▼
-[2. Classifier] ─── LLM (wählbar) → Typ, Kurzinfo, Datum, Konfidenz
+[3. Classifier] ─── LLM (wählbar, parallel mit --workers) → Typ, Kurzinfo, Datum, Konfidenz
     │                 ↻ Retry bei Fehler
     │                 ⚠ Warnung bei niedriger Konfidenz
     ▼
-[3. Organizer]  ─── Template → Zielpfad → Kopieren/Verschieben
+[4. Organizer]  ─── Template → Zielpfad → Kopieren/Verschieben (sequentiell)
     │                 📝 Undo-Log schreiben
     ▼
 Sortierte Datei in Zielordner
@@ -474,6 +530,37 @@ pytest --cov=docsort --cov-report=term-missing
 ---
 
 ## ⚡ GPU-Konfiguration
+
+### Parallelverarbeitung
+
+DocSort kann LLM-Aufrufe parallel ausführen, um die Verarbeitung großer Dokumentenmengen zu beschleunigen. Die Datei-Organisation (Kopieren/Verschieben) bleibt dabei sequentiell, um Konflikte zu vermeiden.
+
+```yaml
+# In docsort.yaml
+max_workers: 4    # Anzahl paralleler Worker (Standard: 4)
+```
+
+```bash
+# Per CLI überschreiben
+docsort process ./scans --workers 8
+```
+
+### Extraktions-Cache
+
+Bereits extrahierte Texte werden im Verzeichnis `.docsort_cache/` zwischengespeichert (SHA-256-Hash der Quelldatei als Schlüssel). Bei erneuter Verarbeitung wird die Extraktion übersprungen.
+
+```yaml
+# In docsort.yaml — Cache-Verzeichnis anpassen
+cache_dir: .docsort_cache
+```
+
+```bash
+# Cache deaktivieren
+docsort process ./scans --no-cache
+
+# Cache leeren
+docsort cache clear
+```
 
 ### Empfohlene Einstellungen (RTX 4070 Ti SUPER, 12 GB VRAM)
 
