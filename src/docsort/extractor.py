@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import os
 import shutil
@@ -14,6 +16,9 @@ from typing import Any
 from docsort.config import Config
 
 logger = logging.getLogger(__name__)
+
+# Chunk-Größe für Datei-Hashing (64 KB reicht für Eindeutigkeit + schnell)
+_HASH_CHUNK_SIZE = 65536
 
 # Globaler Cache für den DocumentConverter (Modelle nur einmal laden)
 _converter_cache: dict[str, Any] = {}
@@ -377,13 +382,118 @@ def _assess_quality(text: str, file_path: Path) -> tuple[str, str]:
     return "ok", ""
 
 
+# ============================================================
+# Disk-Cache für extrahierten Text
+# ============================================================
+
+def _file_hash(file_path: Path) -> str:
+    """Berechnet SHA-256 über die ersten 64 KB einer Datei (schnell + eindeutig genug).
+
+    Args:
+        file_path: Pfad zur Datei.
+
+    Returns:
+        Hex-String des SHA-256-Hash.
+    """
+    h = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        h.update(f.read(_HASH_CHUNK_SIZE))
+    return h.hexdigest()
+
+
+def _cache_path_for(file_path: Path, cache_dir: str) -> Path | None:
+    """Gibt den Cache-Pfad für eine Datei zurück, oder None wenn Cache deaktiviert.
+
+    Cache-Verzeichnis wird relativ zum cwd aufgelöst.
+    Struktur: <cache_dir>/<hash_prefix>/<hash>.json
+    (Unterordner mit den ersten 2 Hex-Zeichen zur Vermeidung riesiger Flat-Dirs.)
+    """
+    if not cache_dir:
+        return None
+
+    fhash = _file_hash(file_path)
+    base = Path(cache_dir)
+    return base / fhash[:2] / f"{fhash}.json"
+
+
+def _read_cache(file_path: Path, cache_dir: str) -> ExtractedDoc | None:
+    """Versucht ein ExtractedDoc aus dem Disk-Cache zu lesen.
+
+    Returns:
+        ExtractedDoc bei Cache-Hit, None bei Miss oder Fehler.
+    """
+    cp = _cache_path_for(file_path, cache_dir)
+    if cp is None or not cp.exists():
+        return None
+
+    try:
+        data = json.loads(cp.read_text(encoding="utf-8"))
+        doc = ExtractedDoc(
+            text=data["text"],
+            metadata=data.get("metadata", {}),
+            source_path=file_path,
+            num_pages=data.get("num_pages", 0),
+            ocr_quality=data.get("ocr_quality", "ok"),
+            ocr_quality_info=data.get("ocr_quality_info", ""),
+            extraction_method=data.get("extraction_method", ""),
+        )
+        logger.info("Cache-Hit für %s (Methode: %s).", file_path.name, doc.extraction_method)
+        return doc
+    except Exception as exc:
+        logger.debug("Cache-Lesefehler für %s: %s — wird neu extrahiert.", file_path.name, exc)
+        return None
+
+
+def _write_cache(file_path: Path, doc: ExtractedDoc, cache_dir: str) -> None:
+    """Schreibt ein ExtractedDoc in den Disk-Cache.
+
+    Fehler beim Schreiben werden geloggt aber nicht weitergeworfen.
+    """
+    cp = _cache_path_for(file_path, cache_dir)
+    if cp is None:
+        return
+
+    data = {
+        "text": doc.text,
+        "num_pages": doc.num_pages,
+        "metadata": doc.metadata,
+        "ocr_quality": doc.ocr_quality,
+        "ocr_quality_info": doc.ocr_quality_info,
+        "extraction_method": doc.extraction_method,
+    }
+
+    try:
+        cp.parent.mkdir(parents=True, exist_ok=True)
+        # Atomar schreiben: temp-Datei im selben Verzeichnis, dann umbenennen
+        tmp_fd, tmp_path = tempfile.mkstemp(
+            dir=str(cp.parent), suffix=".tmp", prefix=".cache_"
+        )
+        try:
+            with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False)
+            # os.replace ist atomar auf allen Plattformen
+            os.replace(tmp_path, str(cp))
+        except BaseException:
+            # Temp-Datei aufräumen bei Fehler
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
+        logger.debug("Cache geschrieben für %s.", file_path.name)
+    except Exception as exc:
+        logger.debug("Cache-Schreibfehler für %s: %s", file_path.name, exc)
+
+
 def extract_text(file_path: Path, config: Config) -> ExtractedDoc:
     """Extrahiert Text aus einer Datei — schneller Pfad für digitale PDFs, OCR für Scans.
 
     Strategie:
+        0. Disk-Cache prüfen (SHA-256 der ersten 64 KB) → sofort zurückgeben
         1. PDF mit Text-Layer → PyMuPDF (schnell, <1s)
         2. Gescanntes PDF / Bilder → Docling OCR (langsamer, GPU-beschleunigt)
         3. Andere Formate (DOCX, XLSX etc.) → Docling
+        4. Ergebnis in Disk-Cache schreiben
 
     Args:
         file_path: Pfad zur Quelldatei.
@@ -392,6 +502,11 @@ def extract_text(file_path: Path, config: Config) -> ExtractedDoc:
     Returns:
         ExtractedDoc mit extrahiertem Text und Metadaten.
     """
+    # --- Cache-Hit? ---
+    cached = _read_cache(file_path, config.cache_dir)
+    if cached is not None:
+        return cached
+
     suffix = file_path.suffix.lower()
     extraction_method = ""
     text = ""
@@ -459,7 +574,7 @@ def extract_text(file_path: Path, config: Config) -> ExtractedDoc:
     # Qualitäts-Check
     ocr_quality, ocr_quality_info = _assess_quality(text, file_path)
 
-    return ExtractedDoc(
+    doc = ExtractedDoc(
         text=text,
         metadata=metadata,
         source_path=file_path,
@@ -468,3 +583,8 @@ def extract_text(file_path: Path, config: Config) -> ExtractedDoc:
         ocr_quality_info=ocr_quality_info,
         extraction_method=extraction_method,
     )
+
+    # --- Cache schreiben ---
+    _write_cache(file_path, doc, config.cache_dir)
+
+    return doc

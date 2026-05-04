@@ -47,6 +47,18 @@ ocr_batch_size: 32
 # Spart bei langen Dokumenten erheblich OCR-Zeit.
 max_pages: 5
 
+# Parallele Verarbeitung — Anzahl gleichzeitiger LLM-Anfragen
+# LLM-Aufrufe (2-5s pro Datei) werden parallel ausgeführt,
+# die Datei-Organisation bleibt sequentiell (keine Race-Conditions).
+# 1 = sequentiell (wie bisher), Standard: 4
+max_workers: 4
+
+# Extraktions-Cache — speichert extrahierten Text auf Disk (SHA-256 als Key).
+# Vermeidet wiederholtes OCR bei erneutem Durchlauf derselben Dateien.
+# Leerstring oder auskommentieren = Cache deaktiviert.
+# CLI: --no-cache deaktiviert den Cache einmalig.
+cache_dir: .docsort_cache
+
 # Ordnerstruktur-Template
 # Variablen: {doc_type}, {absender}, {year}, {month}, {filename}
 # Standard: {doc_type}/{year}/{absender}/{filename}
@@ -56,6 +68,14 @@ max_pages: 5
 #   {doc_type}/{year}/{month}/{absender}/{filename}  → Rechnung/2026/03/Stadtwerke/...
 #   {filename}                                       → Flache Struktur
 folder_template: "{doc_type}/{year}/{absender}/{filename}"
+
+# Dateinamen-Template — bestimmt den generierten Dateinamen (ohne Extension)
+# Variablen: {doc_date}, {short_info}, {absender}, {doc_type}, {year}, {month}
+# Standard: {doc_date}_{short_info}  → 2026-01-15_Strom-Abrechnung.pdf
+# Beispiele:
+#   {doc_date}_{absender}_{short_info}  → 2026-01-15_Stadtwerke_Strom-Abrechnung.pdf
+#   {doc_date}_{doc_type}_{short_info}  → 2026-01-15_Rechnung_Strom-Abrechnung.pdf
+# filename_template: "{doc_date}_{short_info}"
 
 # Dokumenttypen (entkommentieren um anzupassen)
 # doc_types:

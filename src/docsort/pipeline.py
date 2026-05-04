@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -27,6 +29,7 @@ class ProcessResult:
     low_confidence: bool = False
     ocr_quality: str = "ok"        # "ok", "low", "empty"
     ocr_quality_info: str = ""
+    duration_seconds: float = 0.0
 
     @property
     def target(self) -> Path | None:
@@ -62,6 +65,36 @@ def collect_files(input_path: Path, config: Config) -> list[Path]:
     return files
 
 
+def _extract_and_classify(
+    file_path: Path, config: Config
+) -> tuple[Path, ExtractedDoc | None, Classification | None, str | None, float]:
+    """Extrahiert Text und klassifiziert eine Datei (parallelisierbar).
+
+    Returns:
+        Tuple von (file_path, doc, classification, error, duration).
+    """
+    t0 = time.monotonic()
+    try:
+        doc = extract_text(file_path, config)
+        logger.debug("Extrahiert: %s (%d Zeichen)", file_path.name, len(doc.text))
+
+        classification = classify(doc, config)
+        logger.debug(
+            "Klassifiziert: %s → %s (%s, %.0f%%)",
+            file_path.name,
+            classification.doc_type,
+            classification.short_info,
+            classification.confidence * 100,
+        )
+        duration = time.monotonic() - t0
+        return (file_path, doc, classification, None, duration)
+
+    except Exception as exc:
+        duration = time.monotonic() - t0
+        logger.error("Fehler bei %s: %s", file_path.name, exc)
+        return (file_path, None, None, str(exc), duration)
+
+
 def process_file(file_path: Path, config: Config) -> ProcessResult:
     """Verarbeitet eine einzelne Datei: Extract → Classify → Organize.
 
@@ -73,6 +106,7 @@ def process_file(file_path: Path, config: Config) -> ProcessResult:
         ProcessResult mit Ergebnis aller Schritte.
     """
     try:
+        t0 = time.monotonic()
         # 1. Text extrahieren
         doc = extract_text(file_path, config)
         logger.debug("Extrahiert: %s (%d Zeichen)", file_path.name, len(doc.text))
@@ -93,6 +127,7 @@ def process_file(file_path: Path, config: Config) -> ProcessResult:
         # 3. Organisieren
         result = organize(file_path, classification, config)
 
+        duration = time.monotonic() - t0
         return ProcessResult(
             source=file_path,
             classification=classification,
@@ -101,14 +136,17 @@ def process_file(file_path: Path, config: Config) -> ProcessResult:
             low_confidence=low_confidence,
             ocr_quality=doc.ocr_quality,
             ocr_quality_info=doc.ocr_quality_info,
+            duration_seconds=duration,
         )
 
     except Exception as exc:
+        duration = time.monotonic() - t0
         logger.error("Fehler bei %s: %s", file_path.name, exc)
         return ProcessResult(
             source=file_path,
             error=str(exc),
             success=False,
+            duration_seconds=duration,
         )
 
 
@@ -118,6 +156,11 @@ def process_directory(
     progress_callback: Callable[[int, int, ProcessResult], Any] | None = None,
 ) -> list[ProcessResult]:
     """Verarbeitet alle unterstützten Dateien in einem Verzeichnis.
+
+    Wenn config.max_workers > 1, werden Extraktion und Klassifizierung
+    parallel ausgeführt (LLM-Aufrufe sind unabhängige HTTP-Requests).
+    Die Organisierung (Dateikopie/-verschiebung) erfolgt stets sequentiell,
+    um Race-Conditions bei der Duplikat-Auflösung zu vermeiden.
 
     Args:
         input_dir: Quellverzeichnis.
@@ -133,15 +176,79 @@ def process_directory(
         logger.warning("Keine unterstützten Dateien in %s gefunden.", input_dir)
         return []
 
-    logger.info("Verarbeite %d Datei(en) aus %s", len(files), input_dir)
-    results: list[ProcessResult] = []
+    total = len(files)
+    logger.info("Verarbeite %d Datei(en) aus %s", total, input_dir)
 
-    for i, file_path in enumerate(files, 1):
-        result = process_file(file_path, config)
-        results.append(result)
+    max_workers = getattr(config, "max_workers", 1)
 
-        if progress_callback:
-            progress_callback(i, len(files), result)
+    if max_workers <= 1:
+        # --- Sequentieller Modus (bisheriges Verhalten) ---
+        results: list[ProcessResult] = []
+        for i, file_path in enumerate(files, 1):
+            result = process_file(file_path, config)
+            results.append(result)
+            if progress_callback:
+                progress_callback(i, total, result)
+    else:
+        # --- Paralleler Modus ---
+        logger.info("Parallele Verarbeitung mit %d Workern.", max_workers)
+
+        # Phase 1: Extract + Classify parallel
+        # Dict preserves insertion order in Python 3.7+; we also keep an
+        # ordered list so that results come back in file order.
+        ec_results: dict[Path, tuple[ExtractedDoc | None, Classification | None, str | None, float]] = {}
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_path = {
+                executor.submit(_extract_and_classify, fp, config): fp
+                for fp in files
+            }
+            for future in as_completed(future_to_path):
+                fp, doc, classification, error, duration = future.result()
+                ec_results[fp] = (doc, classification, error, duration)
+
+        # Phase 2: Organize sequentiell (in ursprünglicher Dateireihenfolge)
+        results = []
+        for i, file_path in enumerate(files, 1):
+            doc, classification, error, duration = ec_results[file_path]
+
+            if error is not None or classification is None:
+                result = ProcessResult(
+                    source=file_path,
+                    error=error or "Klassifizierung fehlgeschlagen",
+                    success=False,
+                    duration_seconds=duration,
+                )
+            else:
+                try:
+                    t0 = time.monotonic()
+                    low_confidence = classification.confidence < config.confidence_threshold
+                    org_result = organize(file_path, classification, config)
+                    duration += time.monotonic() - t0
+
+                    result = ProcessResult(
+                        source=file_path,
+                        classification=classification,
+                        organize_result=org_result,
+                        success=org_result.success,
+                        low_confidence=low_confidence,
+                        ocr_quality=doc.ocr_quality if doc else "ok",
+                        ocr_quality_info=doc.ocr_quality_info if doc else "",
+                        duration_seconds=duration,
+                    )
+                except Exception as exc:
+                    logger.error("Fehler beim Organisieren von %s: %s", file_path.name, exc)
+                    result = ProcessResult(
+                        source=file_path,
+                        classification=classification,
+                        error=str(exc),
+                        success=False,
+                        duration_seconds=duration,
+                    )
+
+            results.append(result)
+            if progress_callback:
+                progress_callback(i, total, result)
 
     # Zusammenfassung
     ok = sum(1 for r in results if r.success)

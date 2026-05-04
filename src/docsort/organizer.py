@@ -59,9 +59,18 @@ def build_target_path(
     year = doc_date[:4]
     month = doc_date[5:7] if len(doc_date) >= 7 else "01"
 
-    filename = f"{doc_date}_{classification.short_info}{ext}"
-
     absender = classification.absender or "Unbekannt"
+
+    # Dateiname aus Template bauen
+    filename_base = config.filename_template.format(
+        doc_date=doc_date,
+        doc_type=classification.doc_type,
+        absender=absender,
+        short_info=classification.short_info,
+        year=year,
+        month=month,
+    )
+    filename = f"{filename_base}{ext}"
 
     relative = config.folder_template.format(
         doc_type=classification.doc_type,

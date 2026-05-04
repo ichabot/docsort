@@ -55,6 +55,8 @@ def main() -> None:
 @click.option("--batch-size", type=int, default=None, help="OCR Batch-Größe")
 @click.option("--max-pages", type=int, default=None, help="Max. Seiten pro Dokument (Standard: 5, 0 = alle)")
 @click.option("--config", "config_path", type=click.Path(path_type=Path), default=None, help="Pfad zur Config-Datei")
+@click.option("--no-cache", "no_cache", is_flag=True, default=False, help="Extraktions-Cache deaktivieren")
+@click.option("-w", "--workers", type=int, default=None, help="Parallele LLM-Anfragen (Standard: 4, 1 = sequentiell)")
 @click.option("-v", "--verbose", is_flag=True, help="Ausführliche Ausgabe")
 def process(
     input_dir: Path,
@@ -69,6 +71,8 @@ def process(
     batch_size: int | None,
     max_pages: int | None,
     config_path: Path | None,
+    no_cache: bool,
+    workers: int | None,
     verbose: bool,
 ) -> None:
     """Dokumente aus INPUT_DIR verarbeiten und sortieren."""
@@ -88,6 +92,10 @@ def process(
         config.ocr_batch_size = batch_size
     if max_pages is not None:
         config.max_pages = max_pages
+    if no_cache:
+        config.cache_dir = ""
+    if workers is not None:
+        config.max_workers = max(1, workers)
 
     # Profil anwenden
     if profile:
@@ -110,38 +118,40 @@ def process(
     click.secho(f"Ausgabe:  {config.output_dir.resolve()}", fg="blue")
     click.secho(f"Modus:    {'Kopieren' if config.mode == 'copy' else 'Verschieben'}", fg="blue")
     click.secho(f"LLM:      {p.description or p.name} ({p.model or 'Standard'})", fg="blue")
+    if config.max_workers > 1:
+        click.secho(f"Worker:   {config.max_workers} (parallel)", fg="blue")
     click.echo()
 
-    from docsort.pipeline import collect_files, process_file
-
-    files = collect_files(input_dir, config)
-    if not files:
-        click.secho("Keine unterstützten Dateien gefunden.", fg="red")
-        sys.exit(1)
-
-    click.secho(f"{len(files)} Datei(en) gefunden.\n", fg="green")
+    from docsort.pipeline import process_directory
 
     ok_count = 0
     fail_count = 0
     low_conf_count = 0
 
-    for i, file_path in enumerate(files, 1):
-        result = process_file(file_path, config)
-
+    def _progress(i: int, total: int, result) -> None:
+        nonlocal ok_count, fail_count, low_conf_count
         if result.success:
             ok_count += 1
             target_rel = result.target.relative_to(config.output_dir) if result.target else "?"
             marker = "⚠" if result.low_confidence else "✓"
             color = "yellow" if result.low_confidence else "green"
-            click.secho(f"  [{i}/{len(files)}] {marker} ", fg=color, nl=False)
-            click.echo(f"{file_path.name} → {target_rel}")
+            dur = f" ({result.duration_seconds:.1f}s)"
+            click.secho(f"  [{i}/{total}] {marker} ", fg=color, nl=False)
+            click.echo(f"{result.source.name} → {target_rel}{dur}")
             if result.low_confidence:
                 low_conf_count += 1
                 click.secho(f"           Konfidenz: {result.classification.confidence:.0%}", fg="yellow")
         else:
             fail_count += 1
-            click.secho(f"  [{i}/{len(files)}] ✗ ", fg="red", nl=False)
-            click.echo(f"{file_path.name} — {result.error}")
+            dur = f" ({result.duration_seconds:.1f}s)"
+            click.secho(f"  [{i}/{total}] ✗ ", fg="red", nl=False)
+            click.echo(f"{result.source.name} — {result.error}{dur}")
+
+    results = process_directory(input_dir, config, progress_callback=_progress)
+
+    if not results:
+        click.secho("Keine unterstützten Dateien gefunden.", fg="red")
+        sys.exit(1)
 
     click.echo()
     summary = f"Fertig: {ok_count} erfolgreich, {fail_count} Fehler"

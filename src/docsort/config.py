@@ -87,6 +87,7 @@ Regeln für doc_type:
 """
 
 DEFAULT_FOLDER_TEMPLATE = "{doc_type}/{year}/{absender}/{filename}"
+DEFAULT_FILENAME_TEMPLATE = "{doc_date}_{short_info}"
 
 # ============================================================
 # LLM-Profile
@@ -202,9 +203,13 @@ class Config:
 
     # Ordnerstruktur-Template
     folder_template: str = DEFAULT_FOLDER_TEMPLATE
+    filename_template: str = DEFAULT_FILENAME_TEMPLATE
 
     # System-Prompt (anpassbar)
     system_prompt: str = DEFAULT_SYSTEM_PROMPT
+
+    # Parallelisierung
+    max_workers: int = 4  # Anzahl paralleler LLM-Anfragen (1 = sequentiell)
 
     # Confidence & Retry
     confidence_threshold: float = 0.7
@@ -213,6 +218,9 @@ class Config:
     # Logging
     log_file: str = ""
     undo_log: str = ""
+
+    # Extraktions-Cache (Leerstring = deaktiviert)
+    cache_dir: str = ".docsort_cache"
 
     def __post_init__(self) -> None:
         """Initialisiert eingebaute Profile falls leer."""
@@ -266,11 +274,14 @@ class Config:
             "max_pages": self.max_pages,
             "doc_types": self.doc_types if self.doc_types != DEFAULT_DOC_TYPES else None,
             "folder_template": self.folder_template if self.folder_template != DEFAULT_FOLDER_TEMPLATE else None,
+            "filename_template": self.filename_template if self.filename_template != DEFAULT_FILENAME_TEMPLATE else None,
             "system_prompt": self.system_prompt if self.system_prompt != DEFAULT_SYSTEM_PROMPT else None,
+            "max_workers": self.max_workers,
             "confidence_threshold": self.confidence_threshold,
             "max_retries": self.max_retries,
             "log_file": self.log_file or None,
             "undo_log": self.undo_log or None,
+            "cache_dir": self.cache_dir if self.cache_dir else None,
         }
 
     @classmethod
@@ -292,16 +303,22 @@ class Config:
             config.doc_types = data["doc_types"]
         if "folder_template" in data and data["folder_template"]:
             config.folder_template = data["folder_template"]
+        if "filename_template" in data and data["filename_template"]:
+            config.filename_template = data["filename_template"]
         if "system_prompt" in data and data["system_prompt"]:
             config.system_prompt = data["system_prompt"]
         if "confidence_threshold" in data:
             config.confidence_threshold = data["confidence_threshold"]
         if "max_retries" in data:
             config.max_retries = data["max_retries"]
+        if "max_workers" in data:
+            config.max_workers = max(1, int(data["max_workers"]))
         if "log_file" in data and data["log_file"]:
             config.log_file = data["log_file"]
         if "undo_log" in data and data["undo_log"]:
             config.undo_log = data["undo_log"]
+        if "cache_dir" in data:
+            config.cache_dir = data["cache_dir"] if data["cache_dir"] else ""
 
         # Profile laden
         if "profiles" in data and data["profiles"]:

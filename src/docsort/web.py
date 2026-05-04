@@ -129,10 +129,11 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
 
                 target_dir = str(result.target.parent) if result.target else "—"
                 target_file = result.target.name if result.target else "—"
+                dur_str = f"{result.duration_seconds:.1f}s"
 
                 rows.append([
                     fp.name, c.doc_type, c.absender, c.short_info, c.doc_date,
-                    conf_str, status, target_dir, target_file,
+                    conf_str, dur_str, status, target_dir, target_file,
                 ])
                 cache.append({
                     "file_path": fp_str,
@@ -144,13 +145,15 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
                     "confidence": c.confidence,
                     "ocr_quality": result.ocr_quality,
                     "ocr_quality_info": result.ocr_quality_info,
+                    "duration_seconds": result.duration_seconds,
                 })
                 log_icon = "⚠️" if result.low_confidence else "✓"
                 ocr_warn = f" 🔍 OCR-Qualität: {result.ocr_quality}" if result.ocr_quality != "ok" else ""
-                log_lines.append(f"[{i}/{len(files)}] {log_icon} {fp.name} → {c.doc_type} ({c.confidence:.0%}){ocr_warn}")
+                log_lines.append(f"[{i}/{len(files)}] {log_icon} {fp.name} → {c.doc_type} ({c.confidence:.0%}) [{result.duration_seconds:.1f}s]{ocr_warn}")
             else:
-                rows.append([fp.name, "—", "—", "—", "—", "—", f"❌ {result.error or 'Fehler'}", "—", "—"])
-                log_lines.append(f"[{i}/{len(files)}] ✗ {fp.name}: {result.error}")
+                dur_str = f"{result.duration_seconds:.1f}s"
+                rows.append([fp.name, "—", "—", "—", "—", "—", dur_str, f"❌ {result.error or 'Fehler'}", "—", "—"])
+                log_lines.append(f"[{i}/{len(files)}] ✗ {fp.name}: {result.error} [{result.duration_seconds:.1f}s]")
 
         return rows, "\n".join(log_lines), cache, file_map
 
@@ -352,7 +355,7 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
 
             rows.append([
                 fp.name, e["doc_type"], e.get("absender", ""), e["short_info"], e["doc_date"],
-                conf_str, status, str(target.parent), target.name,
+                conf_str, f"{e.get('duration_seconds', 0.0):.1f}s", status, str(target.parent), target.name,
             ])
 
         return rows, cached_results
@@ -405,9 +408,9 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
                 # --- Ergebnis-Tabelle (volle Breite) ---
                 gr.Markdown("### 📊 Ergebnis — Zeile anklicken für Vorschau und Bearbeitung")
                 result_table = gr.Dataframe(
-                    headers=["Datei", "Typ", "Absender", "Kurzinfo", "Datum", "Konf.", "Status", "Zielpfad", "Zieldatei"],
-                    datatype=["str"] * 9,
-                    column_count=(9, "fixed"),
+                    headers=["Datei", "Typ", "Absender", "Kurzinfo", "Datum", "Konf.", "Dauer", "Status", "Zielpfad", "Zieldatei"],
+                    datatype=["str"] * 10,
+                    column_count=(10, "fixed"),
                     interactive=False,
                 )
 
