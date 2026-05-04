@@ -31,11 +31,12 @@ class ExtractedDoc:
     extraction_method: str = ""   # "pymupdf", "docling-ocr"
 
 
-def _extract_pdf_fast(file_path: Path) -> tuple[str, int]:
+def _extract_pdf_fast(file_path: Path, max_pages: int = 0) -> tuple[str, int]:
     """Extrahiert Text aus PDF via PyMuPDF (schnell, kein OCR).
 
     Args:
         file_path: Pfad zur PDF-Datei.
+        max_pages: Maximale Seitenzahl (0 = alle).
 
     Returns:
         Tuple (text, num_pages). Text ist leer wenn kein Text-Layer vorhanden.
@@ -44,12 +45,20 @@ def _extract_pdf_fast(file_path: Path) -> tuple[str, int]:
 
     doc = fitz.open(str(file_path))
     num_pages = len(doc)
+    pages_to_read = min(num_pages, max_pages) if max_pages > 0 else num_pages
     pages_text: list[str] = []
 
-    for page in doc:
-        pages_text.append(page.get_text())
+    for i in range(pages_to_read):
+        pages_text.append(doc[i].get_text())
 
     doc.close()
+
+    if max_pages > 0 and num_pages > max_pages:
+        logger.info(
+            "Seitenlimit: %d von %d Seiten gelesen (max_pages=%d).",
+            pages_to_read, num_pages, max_pages,
+        )
+
     return "\n".join(pages_text), num_pages
 
 
@@ -106,6 +115,8 @@ def _get_ocr_converter(config: Config) -> Any:
 def _extract_with_docling(file_path: Path, config: Config) -> tuple[str, int, dict[str, Any]]:
     """Extrahiert Text via Docling (OCR-Pfad für gescannte Dokumente).
 
+    Bei PDFs mit mehr Seiten als config.max_pages wird nur ein Ausschnitt verarbeitet.
+
     Args:
         file_path: Pfad zur Quelldatei.
         config: DocSort-Konfiguration.
@@ -113,11 +124,42 @@ def _extract_with_docling(file_path: Path, config: Config) -> tuple[str, int, di
     Returns:
         Tuple (text, num_pages, metadata).
     """
+    import tempfile
+
+    actual_file = file_path
+    total_pages = 0
+    truncated = False
+
+    # PDF auf max_pages begrenzen um OCR-Zeit zu sparen
+    if config.max_pages > 0 and file_path.suffix.lower() == ".pdf":
+        try:
+            import fitz
+
+            src = fitz.open(str(file_path))
+            total_pages = len(src)
+
+            if total_pages > config.max_pages:
+                truncated = True
+                tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+                dst = fitz.open()
+                dst.insert_pdf(src, from_page=0, to_page=config.max_pages - 1)
+                dst.save(tmp.name)
+                dst.close()
+                actual_file = Path(tmp.name)
+                logger.info(
+                    "OCR-Seitenlimit: verarbeite %d von %d Seiten.",
+                    config.max_pages, total_pages,
+                )
+
+            src.close()
+        except Exception as exc:
+            logger.warning("Seitenlimit-Trim fehlgeschlagen (%s) — verarbeite komplettes PDF.", exc)
+
     converter = _get_ocr_converter(config)
-    result = converter.convert(str(file_path))
+    result = converter.convert(str(actual_file))
 
     text = result.document.export_to_markdown()
-    num_pages = getattr(result.document, "num_pages", 0) or 0
+    num_pages = total_pages if total_pages > 0 else (getattr(result.document, "num_pages", 0) or 0)
 
     metadata: dict[str, Any] = {}
     if hasattr(result.document, "metadata"):
@@ -126,6 +168,13 @@ def _extract_with_docling(file_path: Path, config: Config) -> tuple[str, int, di
             metadata = meta_obj
         elif hasattr(meta_obj, "__dict__"):
             metadata = {k: v for k, v in meta_obj.__dict__.items() if not k.startswith("_")}
+
+    # Temp-Datei aufräumen
+    if truncated and actual_file != file_path:
+        try:
+            actual_file.unlink()
+        except OSError:
+            pass
 
     return text, num_pages, metadata
 
@@ -180,7 +229,7 @@ def extract_text(file_path: Path, config: Config) -> ExtractedDoc:
     # Schneller Pfad: PDF mit Text-Layer via PyMuPDF
     if suffix == ".pdf":
         try:
-            text, num_pages = _extract_pdf_fast(file_path)
+            text, num_pages = _extract_pdf_fast(file_path, max_pages=config.max_pages)
 
             if len(text.strip()) >= _MIN_DIGITAL_TEXT_LENGTH:
                 extraction_method = "pymupdf"

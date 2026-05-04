@@ -193,6 +193,9 @@ class Config:
     gpu: bool = True
     ocr_batch_size: int = 32
 
+    # Seitenlimit — nur die ersten N Seiten extrahieren (0 = alle)
+    max_pages: int = 5
+
     # Dateitypen & Dokumenttypen
     supported_extensions: list[str] = field(default_factory=lambda: list(DEFAULT_EXTENSIONS))
     doc_types: list[str] = field(default_factory=lambda: list(DEFAULT_DOC_TYPES))
@@ -260,6 +263,7 @@ class Config:
             "mode": self.mode,
             "gpu": self.gpu,
             "ocr_batch_size": self.ocr_batch_size,
+            "max_pages": self.max_pages,
             "doc_types": self.doc_types if self.doc_types != DEFAULT_DOC_TYPES else None,
             "folder_template": self.folder_template if self.folder_template != DEFAULT_FOLDER_TEMPLATE else None,
             "system_prompt": self.system_prompt if self.system_prompt != DEFAULT_SYSTEM_PROMPT else None,
@@ -282,6 +286,8 @@ class Config:
             config.gpu = data["gpu"]
         if "ocr_batch_size" in data:
             config.ocr_batch_size = data["ocr_batch_size"]
+        if "max_pages" in data:
+            config.max_pages = data["max_pages"]
         if "doc_types" in data and data["doc_types"]:
             config.doc_types = data["doc_types"]
         if "folder_template" in data and data["folder_template"]:

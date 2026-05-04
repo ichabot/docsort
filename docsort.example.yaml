@@ -42,6 +42,11 @@ mode: copy
 gpu: true
 ocr_batch_size: 32
 
+# Seitenlimit — nur die ersten N Seiten extrahieren (0 = alle)
+# Für Klassifizierung reichen die ersten Seiten (Briefkopf, Absender, Datum).
+# Spart bei langen Dokumenten erheblich OCR-Zeit.
+max_pages: 5
+
 # Ordnerstruktur-Template
 # Variablen: {doc_type}, {absender}, {year}, {month}, {filename}
 # Standard: {doc_type}/{year}/{absender}/{filename}
