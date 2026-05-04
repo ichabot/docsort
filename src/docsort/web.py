@@ -99,6 +99,7 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
             return [], "⚠️ Keine Dateien hochgeladen.", [], {}
 
         from docsort.pipeline import process_file
+        from concurrent.futures import ThreadPoolExecutor, as_completed
 
         cfg = _build_config(
             profile_name, custom_url, custom_model, custom_key,
@@ -111,10 +112,41 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
         cache: list[dict] = []
         file_map: dict[str, str] = {}
 
-        for i, fp_str in enumerate(files, 1):
-            fp = Path(fp_str)
+        # Parallele Verarbeitung — extract+classify pro Datei
+        max_workers = getattr(cfg, "max_workers", 4) or 4
+        file_paths = [Path(fp_str) for fp_str in files]
+        results_ordered: list[tuple[int, Path, str, any]] = []
+
+        if max_workers > 1 and len(file_paths) > 1:
+            # Parallel
+            futures = {}
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                for i, fp in enumerate(file_paths):
+                    future = executor.submit(process_file, fp, cfg)
+                    futures[future] = (i, fp, files[i])
+
+                for future in as_completed(futures):
+                    idx, fp, fp_str = futures[future]
+                    try:
+                        result = future.result()
+                    except Exception as exc:
+                        from docsort.pipeline import ProcessResult
+                        result = ProcessResult(source=fp, error=str(exc))
+                    results_ordered.append((idx, fp, fp_str, result))
+
+            # Sortieren nach Original-Reihenfolge
+            results_ordered.sort(key=lambda x: x[0])
+        else:
+            # Sequentiell
+            for i, fp in enumerate(file_paths):
+                result = process_file(fp, cfg)
+                results_ordered.append((i, fp, files[i], result))
+
+        # Ergebnisse aufbereiten
+        total = len(results_ordered)
+        for idx, fp, fp_str, result in results_ordered:
+            i = idx + 1
             file_map[fp.name] = fp_str
-            result = process_file(fp, cfg)
 
             if result.success and result.classification:
                 c = result.classification
