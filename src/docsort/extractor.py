@@ -116,6 +116,8 @@ def _get_converter(config: Config) -> Any:
     """Erstellt oder gibt den gecachten Docling DocumentConverter zurück.
 
     Konfiguriert für PDF und Bild-Formate mit externen Plugins (OnnxTR etc.).
+    Images nutzen intern dieselbe StandardPdfPipeline wie PDFs —
+    daher teilen sich beide dasselbe PdfPipelineOptions-Objekt.
     """
     cache_key = f"gpu={config.gpu}_ocr={config.ocr_batch_size}"
 
@@ -126,26 +128,11 @@ def _get_converter(config: Config) -> Any:
     from docling.datamodel.pipeline_options import PdfPipelineOptions
     from docling.document_converter import DocumentConverter, PdfFormatOption
 
-    # --- PDF Pipeline ---
-    pdf_options = PdfPipelineOptions()
-    pdf_options.do_ocr = True
-    pdf_options.do_table_structure = False
-    pdf_options.allow_external_plugins = True
-
-    # --- Image Pipeline ---
-    # Docling nutzt ImagePipelineOptions für Bilder — braucht eigenes allow_external_plugins
-    image_format_option = None
-    try:
-        from docling.datamodel.pipeline_options import ImagePipelineOptions
-        from docling.document_converter import ImageFormatOption
-
-        img_options = ImagePipelineOptions()
-        img_options.do_ocr = True
-        img_options.do_table_structure = False
-        img_options.allow_external_plugins = True
-        image_format_option = ImageFormatOption(pipeline_options=img_options)
-    except ImportError:
-        logger.debug("ImagePipelineOptions nicht verfügbar — Bilder nutzen PDF-Pipeline-Defaults.")
+    # Gemeinsame Pipeline-Options für PDF und Bilder
+    pipeline_options = PdfPipelineOptions()
+    pipeline_options.do_ocr = True
+    pipeline_options.do_table_structure = False
+    pipeline_options.allow_external_plugins = True
 
     # GPU-Beschleunigung
     if config.gpu:
@@ -155,13 +142,10 @@ def _get_converter(config: Config) -> Any:
                 AcceleratorOptions,
             )
 
-            accel = AcceleratorOptions(
+            pipeline_options.accelerator_options = AcceleratorOptions(
                 device=AcceleratorDevice.CUDA,
                 num_threads=4,
             )
-            pdf_options.accelerator_options = accel
-            if image_format_option and hasattr(image_format_option.pipeline_options, "accelerator_options"):
-                image_format_option.pipeline_options.accelerator_options = accel
             logger.info("GPU-Beschleunigung (CUDA) für OCR aktiviert.")
         except Exception:
             logger.warning("CUDA nicht verfügbar — Fallback auf CPU.")
@@ -170,20 +154,25 @@ def _get_converter(config: Config) -> Any:
     try:
         from docling_ocr_onnxtr import OnnxtrOcrOptions
 
-        ocr_opts = OnnxtrOcrOptions()
-        pdf_options.ocr_options = ocr_opts
-        if image_format_option and hasattr(image_format_option.pipeline_options, "ocr_options"):
-            image_format_option.pipeline_options.ocr_options = ocr_opts
+        pipeline_options.ocr_options = OnnxtrOcrOptions()
         logger.info("OnnxTR OCR-Engine aktiviert.")
     except ImportError:
         logger.debug("docling-ocr-onnxtr nicht installiert — Standard-OCR wird genutzt.")
 
-    # Converter mit beiden Format-Optionen
+    # Format-Optionen: PDF + Bilder teilen sich dieselbe Pipeline-Config
     format_options: dict[InputFormat, Any] = {
-        InputFormat.PDF: PdfFormatOption(pipeline_options=pdf_options),
+        InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options),
     }
-    if image_format_option:
-        format_options[InputFormat.IMAGE] = image_format_option
+
+    # ImageFormatOption für Bilder — nutzt dasselbe pipeline_options
+    try:
+        from docling.document_converter import ImageFormatOption
+
+        format_options[InputFormat.IMAGE] = ImageFormatOption(
+            pipeline_options=pipeline_options,
+        )
+    except ImportError:
+        logger.debug("ImageFormatOption nicht verfügbar — Bilder nutzen Defaults.")
 
     converter = DocumentConverter(format_options=format_options)
     _converter_cache[cache_key] = converter
