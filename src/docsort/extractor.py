@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
+import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -19,6 +21,16 @@ _converter_cache: dict[str, Any] = {}
 # Minimale Textmenge ab der ein PDF als "digital" gilt (hat brauchbaren Text-Layer)
 _MIN_DIGITAL_TEXT_LENGTH = 50
 
+# OpenDocument-Formate die LibreOffice-Konvertierung brauchen
+_LIBREOFFICE_FORMATS: dict[str, str] = {
+    ".odt": "docx",   # ODT → DOCX
+    ".ods": "xlsx",    # ODS → XLSX
+    ".odp": "pptx",    # ODP → PPTX
+}
+
+# Cache für LibreOffice-Pfad (None = nicht geprüft, False = nicht gefunden, str = Pfad)
+_libreoffice_path: str | None | bool = None
+
 
 @dataclass
 class ExtractedDoc:
@@ -31,6 +43,117 @@ class ExtractedDoc:
     ocr_quality: str = "ok"       # "ok", "low", "empty"
     ocr_quality_info: str = ""    # Beschreibung des Problems
     extraction_method: str = ""   # "pymupdf", "docling-ocr"
+
+
+def _find_libreoffice() -> str | None:
+    """Findet den LibreOffice-Pfad (Windows + Linux/macOS).
+
+    Returns:
+        Pfad zum LibreOffice-Binary oder None wenn nicht installiert.
+    """
+    global _libreoffice_path
+
+    if _libreoffice_path is not None:
+        return _libreoffice_path if _libreoffice_path else None
+
+    # Linux/macOS: libreoffice oder soffice im PATH
+    for cmd in ("libreoffice", "soffice"):
+        path = shutil.which(cmd)
+        if path:
+            _libreoffice_path = path
+            return path
+
+    # Windows: Typische Installationspfade
+    if os.name == "nt":
+        for base in [
+            os.environ.get("PROGRAMFILES", r"C:\Program Files"),
+            os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)"),
+        ]:
+            if not base:
+                continue
+            program_dir = Path(base) / "LibreOffice" / "program"
+            soffice = program_dir / "soffice.exe"
+            if soffice.exists():
+                _libreoffice_path = str(soffice)
+                return str(soffice)
+
+    _libreoffice_path = False
+    return None
+
+
+def _convert_with_libreoffice(file_path: Path, target_format: str) -> Path:
+    """Konvertiert eine Datei via LibreOffice headless.
+
+    Args:
+        file_path: Quell-Datei (z.B. .odt).
+        target_format: Zielformat (z.B. "docx").
+
+    Returns:
+        Pfad zur konvertierten Datei in einem temp-Verzeichnis.
+
+    Raises:
+        RuntimeError: LibreOffice nicht installiert oder Konvertierung fehlgeschlagen.
+    """
+    lo_path = _find_libreoffice()
+    if not lo_path:
+        raise RuntimeError(
+            f"LibreOffice wird für {file_path.suffix.upper()}-Dateien benötigt, "
+            f"ist aber nicht installiert.\n"
+            f"  Windows: https://www.libreoffice.org/download/\n"
+            f"  Linux:   sudo apt install libreoffice-core (oder libreoffice)\n"
+            f"  macOS:   brew install --cask libreoffice"
+        )
+
+    # Temp-Verzeichnis für Output (LibreOffice bestimmt den Dateinamen selbst)
+    tmp_dir = tempfile.mkdtemp(prefix="docsort_lo_")
+
+    try:
+        cmd = [
+            lo_path,
+            "--headless",
+            "--norestore",
+            "--convert-to", target_format,
+            "--outdir", tmp_dir,
+            str(file_path),
+        ]
+
+        logger.info(
+            "LibreOffice-Konvertierung: %s → %s",
+            file_path.name, target_format.upper(),
+        )
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"LibreOffice-Konvertierung fehlgeschlagen (Exit {result.returncode}): "
+                f"{result.stderr.strip()}"
+            )
+
+        # Konvertierte Datei finden
+        expected_name = file_path.stem + "." + target_format
+        converted = Path(tmp_dir) / expected_name
+
+        if not converted.exists():
+            # Fallback: erste Datei im tmp_dir mit dem Zielformat
+            candidates = list(Path(tmp_dir).glob(f"*.{target_format}"))
+            if candidates:
+                converted = candidates[0]
+            else:
+                raise RuntimeError(
+                    f"LibreOffice hat keine {target_format.upper()}-Datei erzeugt."
+                )
+
+        logger.info("Konvertiert: %s → %s", file_path.name, converted.name)
+        return converted
+
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("LibreOffice-Konvertierung: Timeout nach 60 Sekunden.")
 
 
 def _extract_pdf_fast(file_path: Path, max_pages: int = 0) -> tuple[str, int]:
@@ -274,43 +397,64 @@ def extract_text(file_path: Path, config: Config) -> ExtractedDoc:
     text = ""
     num_pages = 0
     metadata: dict[str, Any] = {}
+    lo_tmp_file: Path | None = None  # Temp-Datei von LibreOffice-Konvertierung
 
-    # Schneller Pfad: PDF mit Text-Layer via PyMuPDF
-    if suffix == ".pdf":
-        try:
-            text, num_pages = _extract_pdf_fast(file_path, max_pages=config.max_pages)
+    # OpenDocument-Formate (ODT/ODS/ODP) → via LibreOffice nach DOCX/XLSX/PPTX konvertieren
+    actual_file = file_path
+    if suffix in _LIBREOFFICE_FORMATS:
+        target_fmt = _LIBREOFFICE_FORMATS[suffix]
+        lo_tmp_file = _convert_with_libreoffice(file_path, target_fmt)
+        actual_file = lo_tmp_file
+        suffix = actual_file.suffix.lower()
+        extraction_method = "libreoffice+docling"
 
-            if len(text.strip()) >= _MIN_DIGITAL_TEXT_LENGTH:
-                extraction_method = "pymupdf"
-                logger.info(
-                    "PDF hat Text-Layer — PyMuPDF genutzt (%d Zeichen, %d Seiten).",
-                    len(text.strip()), num_pages,
-                )
-            else:
-                # Kein oder zu wenig Text → gescanntes PDF → OCR
-                logger.info(
-                    "PDF hat keinen brauchbaren Text-Layer (%d Zeichen) — starte OCR.",
-                    len(text.strip()),
-                )
-                text, num_pages, metadata = _extract_with_docling(file_path, config)
-                extraction_method = "docling-ocr"
+    try:
+        # Schneller Pfad: PDF mit Text-Layer via PyMuPDF
+        if suffix == ".pdf":
+            try:
+                text, num_pages = _extract_pdf_fast(actual_file, max_pages=config.max_pages)
 
-        except Exception as exc:
-            logger.warning("PyMuPDF fehlgeschlagen (%s) — Fallback auf Docling.", exc)
-            text, num_pages, metadata = _extract_with_docling(file_path, config)
-            extraction_method = "docling-ocr"
+                if len(text.strip()) >= _MIN_DIGITAL_TEXT_LENGTH:
+                    extraction_method = extraction_method or "pymupdf"
+                    logger.info(
+                        "PDF hat Text-Layer — PyMuPDF genutzt (%d Zeichen, %d Seiten).",
+                        len(text.strip()), num_pages,
+                    )
+                else:
+                    # Kein oder zu wenig Text → gescanntes PDF → OCR
+                    logger.info(
+                        "PDF hat keinen brauchbaren Text-Layer (%d Zeichen) — starte OCR.",
+                        len(text.strip()),
+                    )
+                    text, num_pages, metadata = _extract_with_docling(actual_file, config)
+                    extraction_method = extraction_method or "docling-ocr"
 
-    # Bilder → immer OCR
-    elif suffix in (".jpg", ".jpeg", ".png", ".tiff", ".tif", ".bmp", ".webp"):
-        logger.info("Bild-Datei erkannt — starte OCR: %s", file_path.name)
-        text, num_pages, metadata = _extract_with_docling(file_path, config)
-        extraction_method = "docling-ocr"
+            except Exception as exc:
+                logger.warning("PyMuPDF fehlgeschlagen (%s) — Fallback auf Docling.", exc)
+                text, num_pages, metadata = _extract_with_docling(actual_file, config)
+                extraction_method = extraction_method or "docling-ocr"
 
-    # Andere Formate (DOCX, XLSX, etc.) → Docling ohne OCR
-    else:
-        logger.info("Nicht-PDF/Bild-Format — nutze Docling: %s", file_path.name)
-        text, num_pages, metadata = _extract_with_docling(file_path, config)
-        extraction_method = "docling"
+        # Bilder → immer OCR
+        elif suffix in (".jpg", ".jpeg", ".png", ".tiff", ".tif", ".bmp", ".webp"):
+            logger.info("Bild-Datei erkannt — starte OCR: %s", file_path.name)
+            text, num_pages, metadata = _extract_with_docling(actual_file, config)
+            extraction_method = extraction_method or "docling-ocr"
+
+        # Andere Formate (DOCX, XLSX, etc.) → Docling
+        else:
+            logger.info("Nicht-PDF/Bild-Format — nutze Docling: %s", file_path.name)
+            text, num_pages, metadata = _extract_with_docling(actual_file, config)
+            extraction_method = extraction_method or "docling"
+
+    finally:
+        # LibreOffice temp-Datei + Verzeichnis aufräumen
+        if lo_tmp_file is not None:
+            try:
+                lo_dir = lo_tmp_file.parent
+                lo_tmp_file.unlink(missing_ok=True)
+                lo_dir.rmdir()
+            except OSError:
+                pass
 
     # Qualitäts-Check
     ocr_quality, ocr_quality_info = _assess_quality(text, file_path)
