@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "docsort"
-version = "0.1.0"
+version = "0.2.0"
 description = "Automatische Klassifizierung und Sortierung eingescannter Dokumente per OCR und lokalem LLM"
 readme = "README.md"
 license = {text = "MIT"}
