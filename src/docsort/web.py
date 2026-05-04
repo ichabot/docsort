@@ -410,6 +410,18 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
         path = save_config(cfg)
         return f"✅ Config gespeichert: {path}"
 
+    def do_undo() -> str:
+        """Macht die letzte Ausführen-Operation rückgängig."""
+        from docsort.organizer import undo_last
+
+        if not config.undo_log:
+            return "⚠️ Kein Undo-Log konfiguriert (undo_log in docsort.yaml setzen)."
+
+        messages = undo_last(config, count=0)
+        if not messages:
+            return "ℹ️ Nichts zum Rückgängig-Machen."
+        return "\n".join(messages)
+
     # ==========================================================
     # UI LAYOUT
     # ==========================================================
@@ -435,6 +447,7 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
                     with gr.Column(scale=1, min_width=180):
                         analyze_btn = gr.Button("🔍 Analysieren", variant="secondary")
                         execute_btn = gr.Button("▶️ Ausführen", variant="primary")
+                        undo_btn = gr.Button("↩️ Rückgängig", variant="stop")
 
                 # --- Log einklappbar ---
                 with gr.Accordion("📋 Log", open=False):
@@ -601,6 +614,12 @@ MIT License — [Details](https://github.com/ichabot/docsort/blob/main/LICENSE)
         execute_btn.click(
             fn=execute,
             inputs=[file_input] + settings_inputs + [cached_state],
+            outputs=[log_output],
+        )
+
+        undo_btn.click(
+            fn=do_undo,
+            inputs=[],
             outputs=[log_output],
         )
 
