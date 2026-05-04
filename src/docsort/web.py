@@ -151,21 +151,22 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
             if result.success and result.classification:
                 c = result.classification
                 conf_str = f"{c.confidence:.0%}"
-                # Status-Symbole
-                status_parts: list[str] = []
-                if result.low_confidence:
-                    status_parts.append("⚠️ Konfidenz")
+                # Ampel-Status nach Konfidenz
+                if c.confidence >= 0.85:
+                    status = "🟢"
+                elif c.confidence >= 0.50:
+                    status = "🟡"
+                else:
+                    status = "🔴"
                 if result.ocr_quality != "ok":
-                    status_parts.append(f"🔍 OCR: {result.ocr_quality_info[:40]}")
-                status = " | ".join(status_parts) if status_parts else "✅"
+                    status += " 🔍 OCR"
 
                 target_dir = str(result.target.parent) if result.target else "—"
                 target_file = result.target.name if result.target else "—"
-                dur_str = f"{result.duration_seconds:.1f}s"
 
                 rows.append([
                     fp.name, c.doc_type, c.absender, c.short_info, c.doc_date,
-                    conf_str, dur_str, status, target_dir, target_file,
+                    conf_str, status, target_dir, target_file,
                 ])
                 cache.append({
                     "file_path": fp_str,
@@ -183,8 +184,7 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
                 ocr_warn = f" 🔍 OCR-Qualität: {result.ocr_quality}" if result.ocr_quality != "ok" else ""
                 log_lines.append(f"[{i}/{len(files)}] {log_icon} {fp.name} → {c.doc_type} ({c.confidence:.0%}) [{result.duration_seconds:.1f}s]{ocr_warn}")
             else:
-                dur_str = f"{result.duration_seconds:.1f}s"
-                rows.append([fp.name, "—", "—", "—", "—", "—", dur_str, f"❌ {result.error or 'Fehler'}", "—", "—"])
+                rows.append([fp.name, "—", "—", "—", "—", "—", f"❌ {result.error or 'Fehler'}", "—", "—"])
                 log_lines.append(f"[{i}/{len(files)}] ✗ {fp.name}: {result.error} [{result.duration_seconds:.1f}s]")
 
         return rows, "\n".join(log_lines), cache, file_map
@@ -378,16 +378,19 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
             target = build_target_path(fp, cl, cfg)
 
             conf_str = f"{e['confidence']:.0%}"
-            status_parts: list[str] = []
-            if e["confidence"] < 0.7:
-                status_parts.append("⚠️ Konfidenz")
+            # Ampel-Status nach Konfidenz
+            if e["confidence"] >= 0.85:
+                status = "🟢"
+            elif e["confidence"] >= 0.50:
+                status = "🟡"
+            else:
+                status = "🔴"
             if e.get("ocr_quality", "ok") != "ok":
-                status_parts.append(f"🔍 OCR: {e.get('ocr_quality_info', '')[:40]}")
-            status = " | ".join(status_parts) if status_parts else "✅"
+                status += " 🔍 OCR"
 
             rows.append([
                 fp.name, e["doc_type"], e.get("absender", ""), e["short_info"], e["doc_date"],
-                conf_str, f"{e.get('duration_seconds', 0.0):.1f}s", status, str(target.parent), target.name,
+                conf_str, status, str(target.parent), target.name,
             ])
 
         return rows, cached_results
@@ -440,9 +443,9 @@ def create_ui(config: Config | None = None) -> gr.Blocks:
                 # --- Ergebnis-Tabelle (volle Breite) ---
                 gr.Markdown("### 📊 Ergebnis — Zeile anklicken für Vorschau und Bearbeitung")
                 result_table = gr.Dataframe(
-                    headers=["Datei", "Typ", "Absender", "Kurzinfo", "Datum", "Konf.", "Dauer", "Status", "Zielpfad", "Zieldatei"],
-                    datatype=["str"] * 10,
-                    column_count=(10, "fixed"),
+                    headers=["Datei", "Typ", "Absender", "Kurzinfo", "Datum", "Konf.", "Status", "Zielpfad", "Zieldatei"],
+                    datatype=["str"] * 9,
+                    column_count=(9, "fixed"),
                     interactive=False,
                 )
 
