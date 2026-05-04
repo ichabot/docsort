@@ -61,11 +61,12 @@ Antworte ausschließlich mit einem JSON-Objekt in diesem Format:
 }}
 
 Regeln für absender:
-- Bei Lohnabrechnungen/Gehaltsabrechnungen: Name des ARBEITGEBERS (die Firma, nicht die Krankenkasse oder Sozialversicherung)
-- Bei Rechnungen: Name der Firma die die Rechnung stellt
-- Bei Behördenschreiben: Name der Behörde
-- Bei Versicherungen: Name der Versicherungsgesellschaft
-- Allgemein: Wer hat das Dokument erstellt/versendet?
+- WICHTIG: Der Absender ist die Organisation/Firma die das Dokument ERSTELLT hat:
+  * Lohnabrechnung/Gehaltsabrechnung → Name des ARBEITGEBERS (die Firma bei der man arbeitet), NICHT die Krankenkasse, Rentenversicherung oder Sozialversicherung
+  * Rechnung → Firma die die Rechnung ausstellt
+  * Versicherung → Versicherungsgesellschaft
+  * Behördenschreiben → Name der Behörde
+  * Brief/Kündigung → Absender des Briefes
 - Bindestriche statt Leerzeichen
 - Umlaute ersetzen: ä→ae, ö→oe, ü→ue, ß→ss
 - Keine Sonderzeichen außer Bindestrichen
